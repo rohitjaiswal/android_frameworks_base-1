@@ -272,8 +272,11 @@ public class RecentsActivity extends Activity implements RecentsView.RecentsView
             });
             mRecentsView.setSearchBarVisibility(View.GONE);
             findViewById(R.id.floating_action_button).setVisibility(View.GONE);
-
-            // Make the animation of empty recents animatable
+        } else {
+            if (mEmptyView != null) {
+                mEmptyView.setVisibility(View.GONE);
+                mEmptyView.setOnClickListener(null);
+            }
             boolean showSearchBar = CMSettings.System.getInt(getContentResolver(),
                        CMSettings.System.RECENTS_SHOW_SEARCH_BAR, 1) == 1;
 

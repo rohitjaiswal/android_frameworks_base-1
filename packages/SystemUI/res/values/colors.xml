@@ -46,9 +46,9 @@
     <color name="system_secondary_color">@color/one_color</color>
 	<color name="system_accent_color">@color/accent</color><!-- deep teal 200 -->
     <color name="system_warning_color">#fff4511e</color><!-- deep orange 600 -->
-    <color name="qs_text">#FFFFFFFF</color>
+    <color name="qs_text">#ff222222</color>
     <color name="qs_tile_divider">#00000000</color><!-- 16% white -->
-    <color name="qs_tile_text">#B3FFFFFF</color><!-- 70% white -->
+    <color name="qs_tile_text">#ff222222</color><!-- 70% white -->
     <color name="qs_subhead">#99FFFFFF</color><!-- 60% white -->
     <color name="qs_detail_empty">#24B0BEC5</color><!-- 14% blue grey 200 -->
     <color name="qs_detail_button">#FFB0BEC5</color><!-- 100% blue grey 200 -->

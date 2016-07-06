@@ -69,15 +69,15 @@
     <color name="tuner_icon_tint">#4dffffff</color>
 
     <!-- QS Settings Text Colors -->
-    <color name="qs_tile_reset_to_default_text_color">@android:color/white</color>
-	<color name="qs_title_text_color">@color/accent</color>
-    <color name="qs_edit_header_instruction_text_color">@android:color/white</color>
-    <color name="qs_row_text_color">@android:color/white</color>
+    <color name="qs_tile_reset_to_default_text_color">#ff222222</color>
+	<color name="qs_title_text_color">#ff222222</color>
+    <color name="qs_edit_header_instruction_text_color">#ff222222</color>
+    <color name="qs_row_text_color">#ff222222</color>
 
     <!-- natural color of the trash can -->
     <color name="qs_tile_trash_normal_tint">@android:color/transparent</color>
     <!-- tint to color trash can when tile is hovering over it -->
-    <color name="qs_tile_trash_delete_tint">#EF5350</color>
+    <color name="qs_tile_trash_delete_tint">#ff222222</color>
     <!-- Tint to color trash can when hovering edit tile, user cannot delete it.
          Transparent because we have an animation by default. -->
     <color name="qs_tile_trash_delete_tint_warning">@android:color/transparent</color>
@@ -94,7 +94,7 @@
     <color name="task_view_header_text_color">#ffffffff</color>
     <color name="recents_search_bar_label_text_color">#99ffffff</color>
     <color name="recents_empty_background_color">#80000000</color>
-    <color name="qs_tile_edit_header_instruction_text_color">@android:color/white</color>
+    <color name="qs_tile_edit_header_instruction_text_color">#ff222222</color>
     <color name="mland_scorefield_text_color">#FFAAAAAA</color>
     <color name="keyguard_indication_text_color">#ffffff</color>
     <color name="speedbump_line_divider">#00000000</color>
@@ -107,13 +107,13 @@
     <color name="header_debug_info_text_color">#00A040</color>
 
     <!-- QS Detailed View Text and Icon Colors -->
-    <color name="qs_detailed_default_text_color">@android:color/white</color>
+    <color name="qs_detailed_default_text_color">#ff222222</color>
     <color name="qs_detailed_expansion_indicator_color">@color/qs_title_text_color</color>
     <color name="qs_detailed_title_text_color">@color/qs_title_text_color</color>
     <color name="qs_detailed_icon_tint_color">@color/qs_title_text_color</color>
 
     <!-- Quick tile text color when the tile is disabled -->
-    <color name="qs_tile_text_disabled">#ff747474</color>
+    <color name="qs_tile_text_disabled">#ff222222</color>
 
     <!-- Active color for volume slider -->
     <color name="volume_slider_active">@color/system_accent_color</color>

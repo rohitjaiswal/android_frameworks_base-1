@@ -61,14 +61,6 @@
                 android:textColor="@color/qs_title_text_color"
                 android:text="@string/quick_settings_title_tiles"/>
 
-        <!-- first row large -->
-        <com.android.systemui.qs.QSBooleanSettingRow
-                style="@style/SettingRow"
-                android:title="@string/quick_settings_title_enlarge_first_row"
-                android:key="sysui_qs_main_tiles"
-                systemui:defaultValue="1"
-                systemui:table="cm_secure"/>
-
         <com.android.systemui.qs.QSBooleanSettingRow
                 style="@style/SettingRow"
                 android:title="@string/quick_settings_title_advanced_location"

@@ -58,9 +58,9 @@
     <string name="onthego_service_toggle">Dienst automatisch neustarten</string>
     <!-- To do: Add QS OnTheGo
     <string name="quick_settings_onthego_back">Hintere Kamera</string>
-    <string name="quick_settings_onthego_front">Vordere Kamera</string>
+    <string name="quick_settings_onthego_front">Vordere Kamera</string>-->
 
-    <!- Quick settings -->
+    <!-- Quick settings -->
     <string name="quick_settings_brightness_label">Helligkeit</string>
     <string name="quick_settings_screen_off_label">Bildschirm aus</string>
     <string name="quick_settings_screenshot_label">Bildschirmfoto</string>
@@ -129,10 +129,6 @@
     <string name="quick_settings_pie_on">PIE AN</string>
     <string name="quick_settings_pie_off">PIE AUS</string>
 
-    <!-- Aicp Extras Tile -->
-    <string name="quick_aicp_extras_label">AICP Extras</string>
-    <string name="quick_aicp_extras_toast">LOL, du hast wirklich geglaubt, dass ein langer Druck dich irgendwo hinbringt!!!</string>
-
     <!-- Dialog title for navigation bar button selection -->
     <string name="navbar_torch">Taschenlampe</string>
 
@@ -158,11 +154,11 @@
     <string name="accessibility_expand">Vollbildmodus</string>
 
     <!-- Dialog title for navigation bar button selection -->
-    <string name="navbar_app_picker">Anwendung wählen</string>
+    <string name="navbar_app_picker">Applikation wählen</string>
 
     <!-- Content description of the Application picker button for accessibility
     (not shown on the screen). [CHAR LIMIT=NONE] -->
-    <string name="accessibility_app_picker">Anwendung wählen</string>
+    <string name="accessibility_app_picker">Applikation wählen</string>
 
     <!-- Themes QS Tile -->
     <string name="quick_settings_themes">Designs</string>
@@ -201,32 +197,5 @@
     <!-- Floating Windows tile -->
     <string name="quick_settings_slim_floats_on">Slim Schwebemodus AN</string>
     <string name="quick_settings_slim_floats_off">Slim Schwebemodus AUS</string>
-
-    <!-- SystemUI restart tile -->
-    <string name="quick_settings_systemui_restart_label">SystemUI-Neustart</string>
-
-    <!-- Off/On/Toggle -->
-    <string name="off">AUS</string>
-    <string name="on">AN</string>
-    <string name="toggle">Umschalten</string>
-
-    <!-- Dialog Cancel/OK -->
-    <string name="cancel">Abbruch</string>
-    <string name="dlg_ok">Ok</string>
-    <string name="yes">Ja</string>
-    <string name="no">Nein</string>
-
-    <!-- Slim Shortcut Actions -->
-    <string name="shortcut_picker">AICP Verknüpfungen</string>
-    <string name="shortcut_rotation">Display-Drehung</string>
-    <string name="shortcut_reboot">Neustart</string>
-    <string name="shortcut_recovery">Recovery</string>
-    <string name="shortcut_screensleep">Bildschirm ausschalten</string>
-    <string name="shortcut_volume">Lautstärkeregler</string>
-    <string name="shortcut_restart_ui">SystemUI neustarten</string>
-    <string name="shortcut_powermenu">Ein/Aus-Menü</string>
-    <string name="shortcut_flashlight">Taschenlampe</string>
-    <string name="shortcut_clear_notifications">Benachrichtigungen löschen</string>
-    <string name="shortcut_toggle_title">Auszuführende Aktion</string>
 
 </resources>

@@ -18,6 +18,7 @@
     <!-- Floating action button -->
     <color name="fab_color">#ff009688</color>
     <color name="floating_action_button_icon_color">#ffffff</color>
+    <color name="qs_data_bg">#3949ab</color>
 
     <!-- Gesture Anywhere specific colors -->
     <color name="gesture_overlay_background_fill_color">#80000000</color>
@@ -74,8 +75,5 @@
     <color name="sidebar_item_text_color">#ffffffff</color>
     <!-- app sidebar item text shadow color -->
     <color name="sidebar_item_text_shadow_color">#ff000000</color>
-
-    <!-- Volume panel border coler -->
-    <color name="volume_panel_border_color">#ff2962ff</color><!-- blue A700 -->
 
 </resources>
