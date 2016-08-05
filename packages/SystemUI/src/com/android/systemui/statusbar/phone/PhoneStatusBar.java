@@ -658,6 +658,33 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.STATUS_BAR_CUSTOM_HEADER_SHADOW), false, this,
                     UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.STATUS_BAR_CUSTOM_HEADER_TEXT_SHADOW), false, this,
+                    UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.STATUS_BAR_CUSTOM_HEADER_TEXT_SHADOW_COLOR), false, this,
+                    UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.LOCKSCREEN_ALPHA), false, this,
+					UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+		            Settings.System.LOCKSCREEN_SECURITY_ALPHA), false, this,
+					UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+		            Settings.System.QS_STROKE), false, this,
+					UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+		            Settings.System.STATUSBAR_CLOCK_COLOR_SWITCH), false, this,
+					UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.NAVBAR_TINT_SWITCH),
+                    false, this, UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.NAVBAR_BUTTON_COLOR),
+                    false, this, UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.Secure.getUriFor(
+                    Settings.Secure.NAVBAR_BUTTONS_ALPHA),
+                    false, this, UserHandle.USER_ALL);
             update();
         }
 
@@ -708,6 +735,39 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
             } else if (uri.equals(Settings.System.getUriFor(
                     Settings.System.USE_SLIM_RECENTS))) {
                 updateRecents();
+            } else if (uri.equals(Settings.System.getUriFor(
+                    Settings.System.QS_STROKE))) {
+                    int mQSStroke = Settings.System.getIntForUser(
+                            mContext.getContentResolver(),
+                            Settings.System.QS_STROKE, 1,
+                            UserHandle.USER_CURRENT);
+                    if (mQSStroke == 0) {
+                        recreateStatusBar();
+                        updateRowStates();
+                        updateSpeedbump();
+                        updateClearAll();
+                        updateEmptyShadeView();
+                    }
+            } else if (uri.equals(Settings.System.getUriFor(
+                    Settings.System.STATUSBAR_CLOCK_COLOR_SWITCH))) {
+                    int mClockColorSwitch = Settings.System.getIntForUser(
+                            mContext.getContentResolver(),
+                            Settings.System.STATUSBAR_CLOCK_COLOR_SWITCH, 0,
+                            UserHandle.USER_CURRENT);
+                    recreateStatusBar();
+                    updateRowStates();
+                    updateSpeedbump();
+                    updateClearAll();
+                    updateEmptyShadeView();
+            } else if (uri.equals(Settings.System.getUriFor(
+                    Settings.System.NAVBAR_TINT_SWITCH))) {
+		        mNavigationController.updateNavbarOverlay(getNavbarThemedResources());
+		    } else if (uri.equals(Settings.System.getUriFor(
+                    Settings.System.NAVBAR_BUTTON_COLOR))) {
+		        mNavigationController.updateNavbarOverlay(getNavbarThemedResources());
+            } else if (uri.equals(Settings.Secure.getUriFor(
+                    Settings.Secure.NAVBAR_BUTTONS_ALPHA))) {
+		        mNavigationController.updateNavbarOverlay(getNavbarThemedResources());
             }
 
             update();
@@ -733,6 +793,18 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
 
             // This method reads CMSettings.Secure.RECENTS_LONG_PRESS_ACTIVITY
             updateCustomRecentsLongPressHandler(false);
+
+            float overlayalpha = Settings.System.getFloatForUser(mContext.getContentResolver(),
+                Settings.System.LOCKSCREEN_ALPHA, 0.45f, UserHandle.USER_CURRENT);
+            if (mScrimController != null) {
+                mScrimController.setOverlayAlpha(overlayalpha);
+            }
+
+            float securityoverlayalpha = Settings.System.getFloatForUser(mContext.getContentResolver(),
+                Settings.System.LOCKSCREEN_SECURITY_ALPHA, 0.75f, UserHandle.USER_CURRENT);
+            if (mScrimController != null) {
+                mScrimController.setSecurityOverlayAlpha(securityoverlayalpha);
+            }
 
             mAicpLogoStyle = Settings.System.getIntForUser(
                     resolver, Settings.System.STATUS_BAR_AICP_LOGO_STYLE, 0,
@@ -4165,7 +4237,11 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
             aicpLogo.setVisibility(View.GONE);
             return;
         }
-        aicpLogo.setColorFilter(color, Mode.SRC_IN);
+        if (color != 0xFFFFFFFF) {
+            aicpLogo.setColorFilter(color, Mode.SRC_IN);
+        } else {
+            aicpLogo.clearColorFilter();
+        }
         if (style == 0) {
             aicpLogo.setVisibility(View.GONE);
             aicpLogo = (ImageView) mStatusBarView.findViewById(R.id.left_aicp_logo);
@@ -5391,7 +5467,25 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
     }
 
     public void onUnlockHintStarted() {
-        mKeyguardIndicationController.showTransientIndication(R.string.keyguard_unlock);
+        mKeyguardIndicationController.showTransientIndication(R.string.keyguard_unlock,
+                KeyguardIndicationController.IndicationDirection.UP);
+    }
+
+    public void onLlsHintStarted() {
+        String llsName = mLiveLockScreenController.getLiveLockScreenName();
+        mKeyguardIndicationController.showTransientIndication(
+                mContext.getString(R.string.swipe_left_hint, llsName),
+                KeyguardIndicationController.IndicationDirection.LEFT);
+    }
+
+    public void onExpandHintStarted() {
+        mKeyguardIndicationController.showTransientIndication(R.string.expand_hint,
+                KeyguardIndicationController.IndicationDirection.DOWN);
+    }
+
+    public void onNotificationsHintStarted() {
+        mKeyguardIndicationController.showTransientIndication(R.string.swipe_right_hint,
+                KeyguardIndicationController.IndicationDirection.RIGHT);
     }
 
     public void onHintFinished() {

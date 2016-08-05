@@ -33,6 +33,7 @@ import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.ContextWrapper;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
@@ -45,6 +46,7 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.database.ContentObserver;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.hardware.camera2.CameraAccessException;
@@ -62,6 +64,7 @@ import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.media.session.MediaSessionLegacyHelper;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Debug;
 import android.os.FactoryTest;
@@ -97,6 +100,7 @@ import cyanogenmod.hardware.CMHardwareManager;
 import cyanogenmod.providers.CMSettings;
 import dalvik.system.DexClassLoader;
 import android.text.Html;
+import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.EventLog;
 import android.util.Log;
@@ -131,6 +135,8 @@ import android.view.animation.Animation;
 import android.view.animation.AnimationSet;
 import android.view.animation.AnimationUtils;
 import android.view.WindowManagerPolicyControl;
+import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.android.internal.R;
@@ -2812,6 +2818,12 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             attrs.subtreeSystemUiVisibility |= View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
         }
+
+        if ((attrs.privateFlags & (WindowManager.LayoutParams.PRIVATE_FLAG_PREVENT_SYSTEM_KEYS |
+                            WindowManager.LayoutParams.PRIVATE_FLAG_PREVENT_POWER_KEY)) != 0) {
+            mContext.enforceCallingOrSelfPermission(android.Manifest.permission.PREVENT_SYSTEM_KEYS,
+                    "No permission to prevent system key");
+        }
     }
 
     void readLidState() {
@@ -2884,6 +2896,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         case TYPE_INPUT_CONSUMER:
             return 6;
         case TYPE_SYSTEM_DIALOG:
+        case TYPE_RECENTS_OVERLAY:
             return 7;
         case TYPE_TOAST:
             // toasts and the plugged-in battery thing
@@ -6891,7 +6904,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     }
 
     private void wakeUpFromPowerKey(long eventTime) {
-        wakeUp(eventTime, mAllowTheaterModeWakeFromPowerKey, "android.policy:POWER");
+        wakeUp(eventTime, mAllowTheaterModeWakeFromPowerKey, "android.policy:POWER", true);
     }
 
     private boolean wakeUp(long wakeTime, boolean wakeInTheaterMode, String reason) {
@@ -7559,7 +7572,15 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     if (mPackageManager.isUpgrade()) {
                         mBootMsgDialog.setTitle(R.string.android_upgrading_title);
                     } else {
-                        mBootMsgDialog.setTitle(R.string.android_start_title);
+                        String dialogTitle = Build.MODEL + " " + mContext.getResources().getString(
+                                com.android.internal.R.string.android_start_title);
+                        String customDialogTitle = Settings.System.getString(mContext.getContentResolver(),
+                                Settings.System.BOOT_DIALOG_TITLE);
+                        if (!TextUtils.isEmpty(customDialogTitle)) {
+                            mBootMsgDialog.setTitle(customDialogTitle);
+                        } else {
+                            mBootMsgDialog.setTitle(dialogTitle);
+                        }
                     }
                     if (always && (currentPackageName != null)) {
                         mBootMsgDialog.setIcon(appInfo.loadIcon(mPackageManager));
@@ -7590,14 +7611,57 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     // Calculate random text color
                     Random rand = new Random();
                     String randomColor = Integer.toHexString(rand.nextInt(0xFFFFFF) & 0xFCFCFC );
+                    Boolean randomColorSwitch = Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_PACKAGES_RANDOM_COLOR, 1) == 1;
+                    if (randomColor == Integer.toHexString((Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_BG_COLOR, 0xFF000000)))) {
+                        randomColor = Integer.toHexString(0xFF000000);
+                    }
+                    if (!randomColorSwitch) {
+                        randomColor = Integer.toHexString(dialogMessageColor);
+                    }
                     mBootMsgDialog.setMessage(Html.fromHtml(msg +
                                                             "<br><b><font color=\"#" + randomColor + "\">" +
                                                             currentPackageName +
                                                             "</font><br><br>Powered by DroidVn-Team</b>"));
+                    if (dialogIcon != 0) {
+                        icon.clearColorFilter();
+                    }
                 }
                 else {
                     mBootMsgDialog.setIcon(AicpDexOpt.get(AicpDexOptIndex));
                     mBootMsgDialog.setMessage(Html.fromHtml(msg + "<br><br><b>Powered by DroidVn-Team</b>"));
+                    if (dialogIcon != 0) {
+                        if ((Settings.System.getInt(mContext.getContentResolver(),
+                                Settings.System.BOOT_DIALOG_BG_COLOR, 0xFF000000)) == 0xFF000000) {
+                            icon.setColorFilter(0xFFFFFFFF);
+                        }
+                    }
+                }
+
+                int textViewTitle = mBootMsgDialog.getContext().getResources().getIdentifier("android:id/alertTitle", null, null);
+                if (textViewTitle != 0) {
+                    int dialogTitleColor = Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_TITLE_COLOR, 0xFF000000);
+                    TextView tvTitle = (TextView) mBootMsgDialog.findViewById(textViewTitle);
+                    if (((Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_BG_COLOR, 0xFF000000)) == 0xFF000000) &&
+                            (dialogTitleColor == 0xFF000000)) {
+                        tvTitle.setTextColor(0xFFFFFFFF);
+                    } else {
+                        tvTitle.setTextColor(dialogTitleColor);
+                    }
+                }
+                int textViewMessage = mBootMsgDialog.getContext().getResources().getIdentifier("android:id/message", null, null);
+                if (textViewMessage != 0) {
+                    TextView tvMessage = (TextView) mBootMsgDialog.findViewById(textViewMessage);
+                    if (((Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_BG_COLOR, 0xFF000000)) == 0xFF000000) &&
+                            (dialogMessageColor == 0xFF000000)) {
+                        tvMessage.setTextColor(0xFFFFFFFF);
+                    } else {
+                        tvMessage.setTextColor(dialogMessageColor);
+                    }
                 }
             }
         });

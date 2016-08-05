@@ -3938,36 +3938,6 @@ public final class Settings {
         public static final String STATUS_BAR_WEATHER_COLOR = "status_bar_weather_color";
 
         /**
-         * Custom Pulse Widths
-         * @hide
-         */
-        public static final String PULSE_CUSTOM_DIMEN = "pulse_custom_dimen";
-
-        /**
-         * Custom Spacing Between Pulse Bars
-         * @hide
-         */
-        public static final String PULSE_CUSTOM_DIV = "pulse_custom_div";
-
-        /**
-         * Size of Filled bars
-         * @hide
-         */
-        public static final String PULSE_FILLED_BLOCK_SIZE = "pulse_filled_block_size";
-
-         /**
-         * Pulse Fudge Factor
-         * @hide
-         */
-        public static final String PULSE_CUSTOM_FUDGE_FACTOR = "pulse_custom_fudge_factor";
-
-         /**
-         * Size of Empty Spaces Between Horizontal Visualizer Bars
-         * @hide
-         */
-        public static final String PULSE_EMPTY_BLOCK_SIZE = "pulse_empty_block_size";
-
-        /**
          * Statusbar weather font size setting
          * @hide
          */
@@ -4149,6 +4119,18 @@ public final class Settings {
          * @hide
          */
         public static final String LOCKSCREEN_BLUR_RADIUS = "lockscreen_blur_radius";
+
+        /**
+         * Change lock screen alpha color
+         * @hide
+         */
+        public static final String LOCKSCREEN_ALPHA = "lockscreen_alpha";
+
+        /**
+         * Change locks creen security alpha color
+         * @hide
+         */
+        public static final String LOCKSCREEN_SECURITY_ALPHA = "lockscreen_security_alpha";
 
         /**
          * Change fonts for the system lockscreen clock widget
@@ -4709,11 +4691,17 @@ public final class Settings {
          */
         public static final String STATUS_BAR_DATE_FORMAT = "status_bar_date_format";
 
-         /**
+        /**
          * Setting for clock color
          * @hide
          */
         public static final String STATUSBAR_CLOCK_COLOR = "statusbar_clock_color";
+
+        /**
+         * Master switch for clock color
+         * @hide
+         */
+        public static final String STATUSBAR_CLOCK_COLOR_SWITCH = "statusbar_clock_color_switch";
 
         /**
          * Settings for clock font style
@@ -4820,6 +4808,12 @@ public final class Settings {
         public static final String RECENT_CARD_TEXT_COLOR = "recent_card_text_color";
 
         /**
+         * Whether to use slim recent app sidebar
+         * @hide
+         */
+        public static final String USE_RECENT_APP_SIDEBAR = "use_recent_app_sidebar";
+
+        /**
          * Recent app sidebar content
          *
          * @hide
@@ -4853,6 +4847,15 @@ public final class Settings {
          * @hide
          */
         public static final String RECENT_APP_SIDEBAR_SCALE_FACTOR = "recent_app_sidebar_scale_factor";
+
+        /**
+         * Whether the app sidebar should open simultaneously with recents
+         * Alternative: recents are allowed to open before the app sidebar finished inflating
+         *
+         * @hide
+         */
+        public static final String RECENT_APP_SIDEBAR_OPEN_SIMULTANEOUSLY =
+                "recent_app_sidebar_open_simultaneously";
 
         /**
          * show the membar in recents
@@ -5274,6 +5277,124 @@ public final class Settings {
          * @hide
          */
         public static final String QS_PANEL_LOGO_ALPHA = "qs_panel_logo_alpha";
+
+        /**
+         * Volume dialog timeout
+         *
+         * @hide
+         */
+        public static final String VOLUME_DIALOG_TIMEOUT = "volume_dialog_timeout";
+
+        /**
+         * Boot dialog pimping switch
+         * enabled by default
+         * @hide
+         */
+        public static final String BOOT_DIALOG_BG_PIMPING = "boot_dialog_bg_pimping";
+
+        /**
+         * Boot dialog bg color
+         * 0xFF000000 is default
+         * @hide
+         */
+        public static final String BOOT_DIALOG_BG_COLOR = "boot_dialog_bg_color";
+
+        /**
+         * Boot dialog stroke custom color
+         * @hide
+         */
+        public static final String BOOT_DIALOG_STROKE_COLOR = "boot_dialog_stroke_color";
+
+        /**
+         * Boot dialog stroke custom thickness
+         * 12dp is default for AICP
+         * set ot 0 to disable
+         * @hide
+         */
+        public static final String BOOT_DIALOG_STROKE_THICKNESS = "boot_dialog_stroke_thickness";
+
+        /**
+         * Boot dialog custom corner radius
+         * 45dp is default
+         * @hide
+         */
+        public static final String BOOT_DIALOG_CORNER_RADIUS = "boot_dialog_corner_radius";
+
+        /**
+         * Boot dialog custom title
+         * @hide
+         */
+        public static final String BOOT_DIALOG_TITLE = "boot_dialog_title";
+
+        /**
+         * Boot dialog title color
+         * 0xFFFFFFFF is default
+         * @hide
+         */
+        public static final String BOOT_DIALOG_TITLE_COLOR = "boot_dialog_title_color";
+
+        /**
+         * Boot dialog message color
+         * 0xFFFFFFFF is default
+         * @hide
+         */
+        public static final String BOOT_DIALOG_MESSAGE_COLOR = "boot_dialog_message_color";
+
+        /**
+         * Boot dialog message random color
+         *
+         * @hide
+         */
+        public static final String BOOT_DIALOG_PACKAGES_RANDOM_COLOR = "boot_dialog_packages_random_color";
+
+        /**
+         * Notifications alpha
+         *
+         * @hide
+         */
+        public static final String NOTIFICATION_ALPHA = "notification_alpha";
+
+        /**
+         * Navbar Button Color Switch
+         * @hide
+         */
+        public static final String NAVBAR_TINT_SWITCH = "navbar_tint_switch";
+
+        /**
+         * Navbar Button Color
+         * @hide
+         */
+        public static final String NAVBAR_BUTTON_COLOR = "navbar_button_color";
+
+        /**
+        * AE Navigation drawer opacity
+        * @hide
+        */
+       public static final String AE_NAV_DRAWER_OPACITY= "ae_drawer_opacity";
+
+        /**
+        * AE Navigation drawer bg color
+        * @hide
+        */
+       public static final String AE_NAV_DRAWER_BG_COLOR= "ae_drawer_bg_color";
+
+       /**
+        * AE Navigation drawer header bg image opacity
+        * @hide
+        */
+       public static final String AE_NAV_HEADER_BG_IMAGE_OPACITY= "ae_header_bg_image_opacity";
+
+       /**
+       * AE Navigation drawer unchecked text color
+       * @hide
+       */
+      public static final String AE_NAV_DRAWER_UNCHECKED_TEXT= "ae_nav_drawer_unchecked_text";
+
+      /**
+       * AE Navigation drawer checked text color
+       * @hide
+       */
+      public static final String AE_NAV_DRAWER_CHECKED_TEXT= "ae_nav_drawer_checked_text";
 
         /**
          * Settings to backup. This is here so that it's in the same place as the settings
@@ -7860,6 +7981,48 @@ public final class Settings {
         public static final String CAMERA_DOUBLE_TAP_POWER_GESTURE_DISABLED =
                 "camera_double_tap_power_gesture_disabled";
 
+        /**
+         * Custom Pulse Widths
+         * @hide
+         */
+        public static final String PULSE_CUSTOM_DIMEN = "pulse_custom_dimen";
+
+        /**
+         * Custom Spacing Between Pulse Bars
+         * @hide
+         */
+        public static final String PULSE_CUSTOM_DIV = "pulse_custom_div";
+
+        /**
+         * Size of Filled bars
+         * @hide
+         */
+        public static final String PULSE_FILLED_BLOCK_SIZE = "pulse_filled_block_size";
+
+         /**
+         * Pulse Fudge Factor
+         * @hide
+         */
+        public static final String PULSE_CUSTOM_FUDGE_FACTOR = "pulse_custom_fudge_factor";
+
+         /**
+         * Size of Empty Spaces Between Horizontal Visualizer Bars
+         * @hide
+         */
+        public static final String PULSE_EMPTY_BLOCK_SIZE = "pulse_empty_block_size";
+
+        /**
+         * Pulse Fudge Factor
+         * @hide
+         */
+        public static final String PULSE_SOLID_FUDGE_FACTOR = "pulse_solid_fudge_factor";
+
+        /**
+         * Pulse Lavamp Animation Speed
+         * @hide
+         */
+        public static final String PULSE_LAVALAMP_SOLID_SPEED = "lava_lamp_solid_speed";
+
          /**
          * Whether user is allowed to pull down quick settings on secure keyguard.
          * @hide
@@ -7973,6 +8136,13 @@ public final class Settings {
         public static final String FLING_PULSE_LAVALAMP_SPEED = "fling_pulse_lavalamp_speed";
 
         /**
+         * Pulse renderer implementation
+         *
+         * @hide
+         */
+        public static final String PULSE_RENDER_STYLE_URI = "pulse_render_style";
+
+        /**
          * time it takes to execute Fling long press action
          *
          * @hide
@@ -8026,6 +8196,12 @@ public final class Settings {
          * @hide
          */
         public static final String FLING_LONGSWIPE_THRESHOLD_DOWN_LAND = "fling_longswipe_threshold_down_land";
+
+        /**
+         * Navbar buttons transparency
+         * @hide
+         */
+        public static final String NAVBAR_BUTTONS_ALPHA = "navbar_buttons_alpha";
 
         /**
          * This are the settings to be backed up.
@@ -8508,6 +8684,12 @@ public final class Settings {
          * Whether ADB is enabled.
          */
         public static final String ADB_ENABLED = "adb_enabled";
+
+        /**
+         * Whether to display the ADB notification even if not connected.
+         * @hide
+         */
+        public static final String ADB_ALWAYS_NOTIFY = "adb_always_notify";
 
         /**
          * String to contain power menu actions

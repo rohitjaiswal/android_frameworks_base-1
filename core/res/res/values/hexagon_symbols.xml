@@ -155,4 +155,11 @@
 
   <!--Exposed Java styles for power menu -->
   <java-symbol type="style" name="Theme.Power.Dialog" />
+
+  <!-- Screenshoot edit action -->
+  <java-symbol type="string" name="edit" />
+
+  <!-- ADB enabled, but not connected notification & custom tile title -->
+  <java-symbol type="string" name="adb_not_connected_notification_title" />
+  <java-symbol type="string" name="adb_active_custom_tile_not_connected" />
 </resources>
