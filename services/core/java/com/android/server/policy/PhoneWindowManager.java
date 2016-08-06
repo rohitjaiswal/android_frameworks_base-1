@@ -7585,11 +7585,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     //mBootMsgDialog.setIndeterminate(true);
                     final GradientDrawable dialogGd = new GradientDrawable();
                     dialogGd.setColor(Settings.System.getInt(mContext.getContentResolver(),
-                            Settings.System.BOOT_DIALOG_BG_COLOR, 0xFFFFFFFF));
+                            Settings.System.BOOT_DIALOG_BG_COLOR, 0xFF000000));
                     dialogGd.setStroke(Settings.System.getInt(mContext.getContentResolver(),
                             Settings.System.BOOT_DIALOG_STROKE_THICKNESS, 0),
                             Settings.System.getInt(mContext.getContentResolver(),
-                            Settings.System.BOOT_DIALOG_STROKE_COLOR, 0xFFFFFFFF));
+                            Settings.System.BOOT_DIALOG_STROKE_COLOR, 0xFF000000));
                     dialogGd.setCornerRadius(Settings.System.getInt(mContext.getContentResolver(),
                             Settings.System.BOOT_DIALOG_CORNER_RADIUS, 45));
                     mBootMsgDialog.getWindow().setType(
