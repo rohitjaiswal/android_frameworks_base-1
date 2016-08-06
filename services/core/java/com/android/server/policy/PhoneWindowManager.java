@@ -2818,12 +2818,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             attrs.subtreeSystemUiVisibility |= View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
         }
-
-        if ((attrs.privateFlags & (WindowManager.LayoutParams.PRIVATE_FLAG_PREVENT_SYSTEM_KEYS |
-                            WindowManager.LayoutParams.PRIVATE_FLAG_PREVENT_POWER_KEY)) != 0) {
-            mContext.enforceCallingOrSelfPermission(android.Manifest.permission.PREVENT_SYSTEM_KEYS,
-                    "No permission to prevent system key");
-        }
     }
 
     void readLidState() {
@@ -7589,6 +7583,15 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     }
                     //mBootMsgDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
                     //mBootMsgDialog.setIndeterminate(true);
+                    final GradientDrawable dialogGd = new GradientDrawable();
+                    dialogGd.setColor(Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_BG_COLOR, 0xFFFFFFFF));
+                    dialogGd.setStroke(Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_STROKE_THICKNESS, 0),
+                            Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_STROKE_COLOR, 0xFFFFFFFF));
+                    dialogGd.setCornerRadius(Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_CORNER_RADIUS, 45));
                     mBootMsgDialog.getWindow().setType(
                             WindowManager.LayoutParams.TYPE_BOOT_PROGRESS);
                     mBootMsgDialog.getWindow().addFlags(
@@ -7597,11 +7600,20 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     mBootMsgDialog.getWindow().setDimAmount(1);
                     WindowManager.LayoutParams lp = mBootMsgDialog.getWindow().getAttributes();
                     lp.screenOrientation = ActivityInfo.SCREEN_ORIENTATION_NOSENSOR;
+                    if (Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.BOOT_DIALOG_BG_PIMPING, 1) ==  1) {
+                        mBootMsgDialog.getWindow().setBackgroundDrawable(dialogGd);
+                    }
                     mBootMsgDialog.getWindow().setAttributes(lp);
                     mBootMsgDialog.setCancelable(false);
                     mBootMsgDialog.setMessage("");
                     mBootMsgDialog.show();
                 }
+
+                int dialogMessageColor = Settings.System.getInt(mContext.getContentResolver(),
+                        Settings.System.BOOT_DIALOG_MESSAGE_COLOR, 0xFF000000);
+                int dialogIcon = mBootMsgDialog.getContext().getResources().getIdentifier("android:id/icon", null, null);
+                ImageView icon = (ImageView) mBootMsgDialog.findViewById(dialogIcon);
 
                 // Only display the current package name if the main message says "Optimizing app N of M".
                 // We don't want to do this when the message says "Starting apps" or "Finishing boot", etc.
