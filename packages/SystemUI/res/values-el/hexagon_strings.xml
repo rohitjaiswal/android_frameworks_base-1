@@ -129,9 +129,6 @@
     <string name="quick_settings_pie_on">Pie ενεργό</string>
     <string name="quick_settings_pie_off">Pie ανενεργό</string>
 
-    <!-- Aicp Extras Tile -->
-    <string name="quick_aicp_extras_label">Έξτρα Aicp</string>
-    <string name="quick_aicp_extras_toast">Χα, πραγματικά πιστεύατε ότι το παρατεταμένο πάτημα θα σας μεταφέρει κάπου!!!</string>
 
     <!-- Dialog title for navigation bar button selection -->
     <string name="navbar_torch">Φακός</string>
