@@ -23,6 +23,6 @@ Copyright (C) 2014 The Android Open Source Project
         android:fillColor="#4DFFFFFF"
         android:pathData="M2.000000,22.000000l20.000000,0.000000 0.000000,-20.000000z"/>
     <path
-        android:fillColor="#75787fFF"
+        android:fillColor="#75787f"
         android:pathData="M16.700001,7.300000l-14.700001,14.700000 14.700001,0.000000z"/>
 </vector>
