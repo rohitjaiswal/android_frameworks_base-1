@@ -16,7 +16,6 @@
 
 package android.telephony;
 
-import android.util.SparseArray;
 import com.android.i18n.phonenumbers.NumberParseException;
 import com.android.i18n.phonenumbers.PhoneNumberUtil;
 import com.android.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat;
@@ -140,55 +139,6 @@ public class PhoneNumberUtils
     /** Returns true if ch is not dialable or alpha char */
     private static boolean isSeparator(char ch) {
         return !isDialable(ch) && !(('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z'));
-    }
-
-    /**
-     * On some CDMA networks +COUNTRYCODE must be rewritten to 0 when making a local
-     * call from within the user's home network.  We maintain a white list of
-     * (country code prefix) -> (rewrite rule) to perform this substitution.
-     *
-     * Since country codes are variable length it is easiest to compile a regex
-     */
-    private static SparseArray<RewriteRule> sCdmaLocalRewriteWhitelist;
-    private static Pattern sCdmaLocalRewritePattern;
-    static {
-        sCdmaLocalRewriteWhitelist = new SparseArray<RewriteRule>();
-        addRewriteRule(62, "ID", "0"); // indonesia
-        addRewriteRule(380, "UA", "0"); // ukraine
-
-        StringBuffer regex = new StringBuffer();
-        regex.append("[+](");
-        for (int i=0; i < sCdmaLocalRewriteWhitelist.size(); ++i) {
-            int countryCode = sCdmaLocalRewriteWhitelist.keyAt(i);
-            if (i > 0) {
-                regex.append("|");
-            }
-            regex.append(countryCode);
-        }
-        regex.append(")");
-        sCdmaLocalRewritePattern = Pattern.compile(regex.toString());
-    }
-
-    private static class RewriteRule {
-        public int countryCodePrefix;
-        public String isoCountryCode;
-        public String replacement;
-
-        public RewriteRule(int countryCodePrefix, String isoCountryCode, String replacement) {
-            this.countryCodePrefix = countryCodePrefix;
-            this.isoCountryCode = isoCountryCode;
-            this.replacement = replacement;
-        }
-
-        public String apply(String dialStr) {
-            return dialStr.replaceFirst("[+]" + countryCodePrefix, replacement);
-        }
-    }
-
-    private static void addRewriteRule(int countryCodePrefix,
-                                       String isoCountryCode, String replacement) {
-        sCdmaLocalRewriteWhitelist.put(countryCodePrefix,
-                new RewriteRule(countryCodePrefix, isoCountryCode, replacement));
     }
 
     /** Extracts the phone number from an Intent.
@@ -562,7 +512,7 @@ public class PhoneNumberUtils
         }
 
         // At least one string has matched completely;
-        if (matched >= MIN_MATCH && (ia <= 0 || ib <= 0)) {
+        if (matched >= MIN_MATCH && (ia < 0 || ib < 0)) {
             return true;
         }
 
@@ -1909,9 +1859,6 @@ public class PhoneNumberUtils
         // to the list.
         number = extractNetworkPortionAlt(number);
 
-        Rlog.d(LOG_TAG, "subId:" + subId + ", defaultCountryIso:" +
-                ((defaultCountryIso == null) ? "NULL" : defaultCountryIso));
-
         String emergencyNumbers = "";
         int slotId = SubscriptionManager.getSlotId(subId);
 
@@ -1921,7 +1868,8 @@ public class PhoneNumberUtils
 
         emergencyNumbers = SystemProperties.get(ecclist, "");
 
-        Rlog.d(LOG_TAG, "slotId:" + slotId + ", emergencyNumbers: " +  emergencyNumbers);
+        Rlog.d(LOG_TAG, "slotId:" + slotId + " subId:" + subId + " country:"
+                + defaultCountryIso + " emergencyNumbers: " +  emergencyNumbers);
 
         if (TextUtils.isEmpty(emergencyNumbers)) {
             // then read-only ecclist property since old RIL only uses this
@@ -1935,13 +1883,11 @@ public class PhoneNumberUtils
                 // It is not possible to append additional digits to an emergency number to dial
                 // the number in Brazil - it won't connect.
                 if (useExactMatch || "BR".equalsIgnoreCase(defaultCountryIso)) {
-                    if (number.equals(emergencyNum) &&
-                        isEmergencyNumberForCurrentIso(number, defaultCountryIso, slotId))  {
+                    if (number.equals(emergencyNum)) {
                         return true;
                     }
                 } else {
-                    if (number.startsWith(emergencyNum) &&
-                        isEmergencyNumberForCurrentIso(number, defaultCountryIso, slotId))  {
+                    if (number.startsWith(emergencyNum)) {
                         return true;
                     }
                 }
@@ -1982,57 +1928,6 @@ public class PhoneNumberUtils
 
         return false;
     }
-
-    /**
-     * When checking for ECC numbers the country (defaultCountryIso) passed in is not taken into
-     * consideration by the function isEmergencyNumberInternal(subId, number, defaultCountryIso,
-     * useExactMatchecclist) this causes the function to return TRUE even in the case when the
-     * number is not emergency for defaultCountryIso.
-     */
-     private static boolean isEmergencyNumberForCurrentIso(String number,
-                                                     String country,
-                                                     int slotId) {
-         Rlog.w(LOG_TAG, "isEmergencyNumberForCurrentIso: number =" + number + " iso=" + country);
-
-         String mccEccIso = "";
-         String mccEccIsoProp = (slotId == 0) ? "ril.mcc.ecc.iso" : ("ril.mcc.ecc.iso" + slotId);
-         mccEccIso = SystemProperties.get(mccEccIsoProp, "");
-
-         if (TextUtils.isEmpty(mccEccIso) || TextUtils.isEmpty(country) || slotId < 0 ||
-             isEmergencyIsoMatchCountryIso(mccEccIso, country)) {
-             Rlog.w(LOG_TAG, "MCC/ISO is empty or matches region for ECC#'s set via RIL db");
-             return true;
-         }
-
-         String mccEccList = "";
-         String mccEccListProp = (slotId == 0) ? "ril.mcc.ecclist" : ("ril.mcc.ecclist" + slotId);
-         mccEccList = SystemProperties.get(mccEccListProp, "");
-
-         if (!TextUtils.isEmpty(mccEccList)) {
-             for (String emergencyNum : mccEccList.split(",")) {
-                 if (number.equals(emergencyNum)) {
-                     Rlog.w(LOG_TAG, "Number " + number + " matches with  " + mccEccListProp);
-                     return false;
-                 }
-             }
-         }
-
-         return true;
-     }
-
-     /**
-      * Checks if the two strings passed are equal ignoring the case
-      */
-      private static boolean isEmergencyIsoMatchCountryIso(String iso, String country) {
-         Rlog.w(LOG_TAG, "isEmergencyIsoMatchCountryIso: iso=" + iso + " country=" + country);
-
-         if(iso.equalsIgnoreCase(country)) {
-             return true;
-         } else {
-             return false;
-         }
-
-      }
 
     /**
      * Checks if a given number is an emergency number for the country that the user is in.
@@ -2206,7 +2101,7 @@ public class PhoneNumberUtils
      * to read the VM number.
      */
     public static boolean isVoiceMailNumber(String number) {
-        return isVoiceMailNumber(SubscriptionManager.getDefaultSubId(), number);
+        return isVoiceMailNumber(SubscriptionManager.getDefaultSubscriptionId(), number);
     }
 
     /**
@@ -2478,7 +2373,7 @@ public class PhoneNumberUtils
                         tempDialStr = postDialStr.substring(dialableIndex);
                     } else {
                         // Non-dialable character such as P/W should not be at the end of
-                        // the dial string after P/W processing in CdmaConnection.java
+                        // the dial string after P/W processing in GsmCdmaConnection.java
                         // Set the postDialStr to "" to break out of the loop
                         if (dialableIndex < 0) {
                             postDialStr = "";
@@ -2684,29 +2579,6 @@ public class PhoneNumberUtils
     }
 
     /**
-     * Returns a rewrite rule for the country code prefix if the dial string matches the
-     * whitelist and the user is in their home network
-     *
-     * @param dialStr number being dialed
-     * @param currIso ISO code of currently attached network
-     * @param defaultIso ISO code of user's sim
-     * @return RewriteRule or null if conditions fail
-     */
-    private static RewriteRule getCdmaLocalRewriteRule(String dialStr,
-                                                       String currIso, String defaultIso) {
-        Matcher m = sCdmaLocalRewritePattern.matcher(dialStr);
-        if (m.find()) {
-            String dialPrefix = m.group(1);
-            RewriteRule rule = sCdmaLocalRewriteWhitelist.get(Integer.valueOf(dialPrefix));
-            if (currIso.equalsIgnoreCase(defaultIso) &&
-                    currIso.equalsIgnoreCase(rule.isoCountryCode)) {
-                return rule;
-            }
-        }
-        return null;
-    }
-
-    /**
      * Determines if the specified number is actually a URI
      * (i.e. a SIP address) rather than a regular PSTN phone number,
      * based on whether or not the number contains an "@" character.
@@ -2769,16 +2641,8 @@ public class PhoneNumberUtils
                 // Remove the leading plus sign
                 retStr = newStr;
             } else {
-                RewriteRule rewriteRule =
-                        getCdmaLocalRewriteRule(networkDialStr,
-                                TelephonyManager.getDefault().getNetworkCountryIso(),
-                                TelephonyManager.getDefault().getSimCountryIso());
-                if (rewriteRule != null) {
-                    retStr = rewriteRule.apply(networkDialStr);
-                } else {
-                    // Replaces the plus sign with the default IDP
-                    retStr = networkDialStr.replaceFirst("[+]", getCurrentIdp(useNanp));
-                }
+                // Replaces the plus sign with the default IDP
+                retStr = networkDialStr.replaceFirst("[+]", getCurrentIdp(useNanp));
             }
         }
         if (DBG) log("processPlusCode, retStr=" + retStr);
@@ -3132,7 +2996,7 @@ public class PhoneNumberUtils
      * Returns Default voice subscription Id.
      */
     private static int getDefaultVoiceSubId() {
-        return SubscriptionManager.getDefaultVoiceSubId();
+        return SubscriptionManager.getDefaultVoiceSubscriptionId();
     }
     //==== End of utility methods used only in compareStrictly() =====
 }

@@ -34,6 +34,4 @@ interface IDreamManager {
     void finishSelf(in IBinder token, boolean immediate);
     void startDozing(in IBinder token, int screenState, int screenBrightness);
     void stopDozing(in IBinder token);
-    void setLidState(int state);
-    int getLidState();
 }

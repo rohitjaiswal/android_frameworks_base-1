@@ -4,7 +4,7 @@
 
 #include "idmap.h"
 
-#include <UniquePtr.h>
+#include <memory>
 #include <androidfw/ResourceTypes.h>
 #include <androidfw/StreamingZipInflater.h>
 #include <androidfw/ZipFileRO.h>
@@ -120,7 +120,7 @@ namespace {
 
     int parse_apk(const char *path, const char *target_package_name)
     {
-        UniquePtr<ZipFileRO> zip(ZipFileRO::open(path));
+        std::unique_ptr<ZipFileRO> zip(ZipFileRO::open(path));
         if (zip.get() == NULL) {
             ALOGW("%s: failed to open zip %s\n", __FUNCTION__, path);
             return -1;
@@ -164,11 +164,15 @@ namespace {
         delete dataMap;
         return priority;
     }
+}
 
-    int idmap_scan(const char *overlay_dir, const char *target_package_name,
-            const char *target_apk_path, const char *idmap_dir,
-            SortedVector<Overlay>& overlayVector)
-    {
+int idmap_scan(const char *target_package_name, const char *target_apk_path,
+        const char *idmap_dir, const android::Vector<const char *> *overlay_dirs)
+{
+    SortedVector<Overlay> overlayVector;
+    const size_t N = overlay_dirs->size();
+    for (size_t i = 0; i < N; ++i) {
+        const char *overlay_dir = overlay_dirs->itemAt(i);
         DIR *dir = opendir(overlay_dir);
         if (dir == NULL) {
             return EXIT_FAILURE;
@@ -179,9 +183,11 @@ namespace {
             struct stat st;
             char overlay_apk_path[PATH_MAX + 1];
             snprintf(overlay_apk_path, PATH_MAX, "%s/%s", overlay_dir, dirent->d_name);
+
             if (stat(overlay_apk_path, &st) < 0) {
                 continue;
             }
+
             if (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode)) {
                 continue;
             }
@@ -192,20 +198,25 @@ namespace {
                     // Skip the "." and ".." dir.
                     continue;
                 }
-                idmap_scan(overlay_apk_path, target_package_name, target_apk_path, idmap_dir,
-                        overlayVector);
-            } else {
+                android::Vector<const char *> ovector;
+                ovector.push(overlay_apk_path);
+                idmap_scan(target_package_name, target_apk_path, idmap_dir, &ovector);
+            }else{
                 int priority = parse_apk(overlay_apk_path, target_package_name);
                 if (priority < 0) {
                     continue;
                 }
 
+                String8 filename = String8(idmap_dir);
+                filename.appendPath("overlays.list");
+                if (unlink(filename.string()) != 0 && errno != ENOENT) {
+                    return EXIT_FAILURE;
+                }
+
                 String8 idmap_path(idmap_dir);
                 idmap_path.appendPath(flatten_path(overlay_apk_path + 1));
                 idmap_path.append("@idmap");
-
-                if (idmap_create_path(target_apk_path, overlay_apk_path, NULL, 0, 0,
-                        idmap_path.string()) != 0) {
+                if (idmap_create_path(target_apk_path, overlay_apk_path, idmap_path.string()) != 0) {
                     ALOGE("error: failed to create idmap for target=%s overlay=%s idmap=%s\n",
                             target_apk_path, overlay_apk_path, idmap_path.string());
                     continue;
@@ -213,31 +224,15 @@ namespace {
 
                 Overlay overlay(String8(overlay_apk_path), idmap_path, priority);
                 overlayVector.add(overlay);
+
+                if (!writePackagesList(filename.string(), overlayVector)) {
+                    return EXIT_FAILURE;
+                }
             }
         }
 
         closedir(dir);
-
-        return EXIT_SUCCESS;
-    }
-}
-
-int idmap_scan(const char *overlay_dir, const char *target_package_name,
-        const char *target_apk_path, const char *idmap_dir)
-{
-    String8 filename = String8(idmap_dir);
-    filename.appendPath("overlays.list");
-    if (unlink(filename.string()) != 0 && errno != ENOENT) {
-        return EXIT_FAILURE;
     }
 
-    SortedVector<Overlay> overlayVector;
-    int res = idmap_scan(overlay_dir, target_package_name, target_apk_path, idmap_dir,
-            overlayVector);
-
-    if (res == EXIT_FAILURE || !writePackagesList(filename.string(), overlayVector)) {
-        return EXIT_FAILURE;
-    }
-
-    return res;
+    return EXIT_SUCCESS;
 }

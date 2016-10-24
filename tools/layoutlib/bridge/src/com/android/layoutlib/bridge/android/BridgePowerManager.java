@@ -86,7 +86,12 @@ public class BridgePowerManager implements IPowerManager {
     }
 
     @Override
-    public void shutdown(boolean confirm, boolean wait) {
+    public void rebootSafeMode(boolean confirm, boolean wait) {
+        // pass for now.
+    }
+
+    @Override
+    public void shutdown(boolean confirm, String reason, boolean wait) {
         // pass for now.
     }
 
@@ -152,17 +157,17 @@ public class BridgePowerManager implements IPowerManager {
     }
 
     @Override
+    public boolean isLightDeviceIdleMode() throws RemoteException {
+        return false;
+    }
+
+    @Override
     public boolean isScreenBrightnessBoosted() throws RemoteException {
         return false;
     }
 
     @Override
     public void setKeyboardVisibility(boolean visible) {
-        // pass for now.
-    }
-
-    @Override
-    public void cpuBoost(int duration) throws RemoteException {
         // pass for now
     }
 

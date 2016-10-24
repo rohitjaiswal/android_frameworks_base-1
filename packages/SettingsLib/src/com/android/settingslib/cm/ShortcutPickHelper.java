@@ -83,11 +83,6 @@ public class ShortcutPickHelper {
     }
 
     public void pickShortcut(String[] names, ShortcutIconResource[] icons, int fragmentId) {
-        pickShortcut(names, icons, fragmentId, true);
-    }
-
-    public void pickShortcut(String[] names, ShortcutIconResource[] icons, int fragmentId,
-            boolean showActivityPicker) {
         Bundle bundle = new Bundle();
 
         ArrayList<String> shortcutNames = new ArrayList<String>();
@@ -97,9 +92,7 @@ public class ShortcutPickHelper {
             }
         }
         shortcutNames.add(mParent.getString(R.string.profile_applist_title));
-        if (showActivityPicker) {
-            shortcutNames.add(mParent.getString(R.string.picker_activities));
-        }
+        shortcutNames.add(mParent.getString(R.string.picker_activities));
         bundle.putStringArrayList(Intent.EXTRA_SHORTCUT_NAME, shortcutNames);
 
         ArrayList<ShortcutIconResource> shortcutIcons = new ArrayList<ShortcutIconResource>();
@@ -109,10 +102,7 @@ public class ShortcutPickHelper {
             }
         }
         shortcutIcons.add(ShortcutIconResource.fromContext(mParent, android.R.drawable.sym_def_app_icon));
-        if (showActivityPicker) {
-            shortcutIcons.add(
-                    ShortcutIconResource.fromContext(mParent, R.drawable.activities_icon));
-        }
+        shortcutIcons.add(ShortcutIconResource.fromContext(mParent, R.drawable.activities_icon));
         bundle.putParcelableArrayList(Intent.EXTRA_SHORTCUT_ICON_RESOURCE, shortcutIcons);
 
         Intent pickIntent = new Intent(Intent.ACTION_PICK_ACTIVITY);

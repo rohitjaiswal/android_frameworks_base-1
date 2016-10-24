@@ -22,15 +22,18 @@ import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CompoundButton;
+import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
+
 import com.android.systemui.R;
+
 import cyanogenmod.providers.CMSettings;
 
 /**
  * The guts of a media notification revealed when performing a long press.
  */
-public class MediaNotificationGuts extends NotificationGuts {
+public class MediaNotificationGuts extends LinearLayout {
 
     private static final String TAG = MediaNotificationGuts.class.getSimpleName();
 
@@ -52,9 +55,13 @@ public class MediaNotificationGuts extends NotificationGuts {
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
-        mQueueGroup = (ViewGroup) findViewById(R.id.queue_group);
+        mQueueGroup = (ViewGroup) findViewById(R.id.notification_guts_media_extension);
+
         mSwitch = (Switch) findViewById(R.id.queue_switch);
-        mSwitch.setChecked(MediaExpandableNotificationRow.isQueueEnabled(getContext()));
+        boolean enabled = CMSettings.System.getInt(getContext().getContentResolver(),
+                CMSettings.System.NOTIFICATION_PLAY_QUEUE, 1) == 1;
+
+        mSwitch.setChecked(enabled);
         mText = (TextView) findViewById(R.id.switch_label);
         mText.setOnClickListener(new OnClickListener() {
             @Override
@@ -71,23 +78,5 @@ public class MediaNotificationGuts extends NotificationGuts {
                         isChecked ? 1 : 0);
             }
         });
-    }
-
-
-    @Override
-    public void setActualHeight(int actualHeight) {
-        super.setActualHeight(actualHeight);
-    }
-
-    @Override
-    public int getActualHeight() {
-        return getHeight();
-    }
-
-    @Override
-    public boolean hasOverlappingRendering() {
-
-        // Prevents this view from creating a layer when alpha is animating.
-        return false;
     }
 }

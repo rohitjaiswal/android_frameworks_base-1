@@ -24,18 +24,13 @@ namespace uirenderer {
 
 class Barrier {
 public:
-    explicit Barrier(Condition::WakeUpType type = Condition::WAKE_UP_ALL) : mType(type), mOpened(false) { }
+    Barrier(Condition::WakeUpType type = Condition::WAKE_UP_ALL) : mType(type), mOpened(false) { }
     ~Barrier() { }
 
     void open() {
         Mutex::Autolock l(mLock);
         mOpened = true;
         mCondition.signal(mType);
-    }
-
-    void close() {
-        Mutex::Autolock l(mLock);
-        mOpened = false;
     }
 
     void wait() const {

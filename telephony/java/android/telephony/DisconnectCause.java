@@ -187,8 +187,12 @@ public class DisconnectCause {
      */
     public static final int CDMA_ALREADY_ACTIVATED         = 49;
 
-    /** call failed due to LTE to 3G/2G handover not feasible */
-    public static final int HO_NOT_FEASIBLE = 50;
+    /**
+     * The call was terminated because it is not possible to place a video call while TTY is
+     * enabled.
+     * {@hide}
+     */
+    public static final int VIDEO_CALL_NOT_ALLOWED_WHILE_TTY_ENABLED = 50;
 
     public static final int NO_CIRCUIT_AVAIL = 51;
     public static final int NO_ROUTE_TO_DESTINAON = 52;
@@ -241,7 +245,10 @@ public class DisconnectCause {
     /** EMERGENCY call failed with permanent fail cause */
     public static final int EMERGENCY_PERM_FAILURE         = 97;
 
-    public static final int NON_SELECTED_USER_CLEARING = 98;
+    /** call failed due to LTE to 3G/2G handover not feasible */
+    public static final int HO_NOT_FEASIBLE = 98;
+
+    public static final int NON_SELECTED_USER_CLEARING = 99;
 
     /**
      * Call was rejected due to number being blacklisted by user.
@@ -257,14 +264,14 @@ public class DisconnectCause {
     // 4) Update toString() with the newly added disconnect type.
     // 5) Update android.telecom.DisconnectCauseUtil with any mappings to a telecom.DisconnectCause.
     //
-    // NextId: 99
+    // NextId: 100
     //*********************************************************************************************
 
     /** Smallest valid value for call disconnect codes. */
     public static final int MINIMUM_VALID_VALUE = NOT_DISCONNECTED;
 
     /** Largest valid value for call disconnect codes. */
-    public static final int MAXIMUM_VALID_VALUE = CALL_BLACKLISTED;
+    public static final int MAXIMUM_VALID_VALUE = NON_SELECTED_USER_CLEARING;
 
     /** Private constructor to avoid class instantiation. */
     private DisconnectCause() {
@@ -372,10 +379,10 @@ public class DisconnectCause {
             return "IMS_MERGED_SUCCESSFULLY";
         case CDMA_ALREADY_ACTIVATED:
             return "CDMA_ALREADY_ACTIVATED";
-        case NON_SELECTED_USER_CLEARING:
-            return "NON_SELECTED_USER_CLEARING";
-        case HO_NOT_FEASIBLE:
-            return "HO_NOT_FEASIBLE";
+        case VIDEO_CALL_NOT_ALLOWED_WHILE_TTY_ENABLED:
+            return "VIDEO_CALL_NOT_ALLOWED_WHILE_TTY_ENABLED";
+        case CALL_BLACKLISTED:
+            return "CALL_BLACKLISTED";
         case NO_CIRCUIT_AVAIL:
             return "NO_CIRCUIT_AVAIL";
         case NO_ROUTE_TO_DESTINAON:
@@ -470,8 +477,10 @@ public class DisconnectCause {
             return "EMERGENCY_TEMP_FAILURE";
         case EMERGENCY_PERM_FAILURE:
             return "EMERGENCY_PERM_FAILURE";
-        case CALL_BLACKLISTED:
-            return "CALL_BLACKLISTED";
+        case HO_NOT_FEASIBLE:
+            return "HO_NOT_FEASIBLE";
+        case NON_SELECTED_USER_CLEARING:
+            return "NON_SELECTED_USER_CLEARING";
         default:
             return "INVALID: " + cause;
         }

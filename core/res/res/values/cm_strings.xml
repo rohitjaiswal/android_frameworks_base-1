@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-     Copyright (C) 2012-2015 The CyanogenMod Project
+     Copyright (C) 2012-2014 The CyanogenMod Project
      Copyright (c) 2013, The Linux Foundation. All rights reserved.
 
      Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,20 +17,11 @@
 -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
 
+    <!-- Long-press back kill application -->
+    <string name="app_killed_message">App killed</string>
+
     <!-- label for item that screenshots in phone options dialog -->
     <string name="global_action_screenshot">Screenshot</string>
-    <!-- label for item that screenrecord in phone options dialog -->
-    <string name="global_action_screenrecord">Screenrecord</string>
-
-    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
-    <string name="permlab_receiveProtectedSms">receive protected SMS</string>
-    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
-    <string name="permdesc_receiveProtectedSms">Allows the app to receive an incoming protected SMS.</string>
-
-    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
-    <string name="permlab_modifyProtectedSmsList">modify protected SMS list</string>
-    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
-    <string name="permdesc_modifyProtectedSmsList">Allows the app to modify the protected SMS address list.</string>
 
     <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgrouplab_security">Security</string>
@@ -47,10 +38,8 @@
     <!-- [CHAR LIMIT=NONE] Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permdesc_changePhoneBlacklist">Allows an app to change the phone numbers that are blocked for incoming calls or messages.</string>
 
-    <!-- Title of an application permission, listed so the user can choose whether they want the application to do this. -->
-    <string name="permlab_setKeyguardWallpaper">set keyguard wallpaper</string>
-    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
-    <string name="permdesc_setKeyguardWallpaper">Allows an app to change the lock screen wallpaper.</string>
+    <!-- label for item that opens the profile choosing dialog -->
+    <string name="global_action_choose_profile">Profile</string>
 
     <!-- label for item that reboots the phone in phone options dialog -->
     <string name="global_action_reboot">Reboot</string>
@@ -82,37 +71,12 @@
     <!-- Reboot Progress Dialog. This is shown if the user chooses to reboot the phone. -->
     <string name="reboot_progress">Rebooting\u2026</string>
 
-    <!-- Long-press back kill application -->
-    <string name="app_killed_message">App killed</string>
-
     <!-- ADB over network notification -->
     <string name="adb_net_active_notification_title">ADB over network enabled</string>
     <!-- ADB over USB and network notification -->
     <string name="adb_both_active_notification_title">ADB over USB &amp; network enabled</string>
     <!-- ADB notification message-->
     <string name="adb_active_generic_notification_message">Touch to disable debugging.</string>
-
-    <!-- ADB custom tile -->
-    <string name="adb_active_custom_tile">ADB - <xliff:g id="adb_type" example="USB">%1$s</xliff:g></string>
-    <string name="adb_active_custom_tile_both">USB &amp; network</string>
-    <string name="adb_active_custom_tile_usb">USB</string>
-    <string name="adb_active_custom_tile_net">Network</string>
-
-    <!-- Title of an application permission, listed so the user can choose whether they want the application to do this. -->
-    <string name="permlab_interceptPackageLaunch">intercept app launch</string>
-
-    <!-- stylus gestures support -->
-    <string name="stylus_app_not_installed">%s is not installed</string>
-
-    <!-- Zen mode buttons -->
-    <string name="silent_mode_priority">Priority</string>
-    <string name="silent_mode_none">None</string>
-
-    <!-- Wifi Hotspot disabled due to subscription change -->
-    <string name="subscription_change_disabled_wifi_ap">Disabled Wi-Fi hotspot due to SIM subscription change</string>
-
-    <!-- WiFi turn off notification action text -->
-    <string name="notify_turn_wifi_off_title">Turn Wi-Fi off</string>
 
     <!-- Privacy Guard -->
     <string name="permlab_changePrivacyGuardState">enable or disable Privacy Guard</string>
@@ -179,7 +143,7 @@
     <string name="app_ops_use_fingerprint">use fingerprint</string>
     <string name="app_ops_add_voicemail">add a voicemail</string>
     <string name="app_ops_read_phone_state">access phone state</string>
-    <string name="app_ops_scan_wifi">scan Wi-Fi networks</string>
+    <string name="app_ops_scan_wifi">scan Wi-Fi Networks</string>
     <string name="app_ops_change_wallpaper">change the wallpaper</string>
     <string name="app_ops_assist_structure">use assist structure</string>
     <string name="app_ops_assist_screenshot">take a screenshot</string>
@@ -190,34 +154,14 @@
     <string name="app_ops_write_external_storage">write external storage</string>
     <string name="app_ops_turn_on_screen">turn the screen on</string>
     <string name="app_ops_get_accounts">get device accounts</string>
+    <string name="app_ops_run_in_background">run in background</string>
     <string name="app_ops_wifi_change">change Wi-Fi state</string>
     <string name="app_ops_su">get root access</string>
-
-    <!-- Notify user that they are in Lock-to-app (for devices without navbar) -->
-    <string name="lock_to_app_toast_no_navbar">To unpin this screen, touch and hold the Back button.</string>
-
-
-    <!-- Template for showing cellular network operator name while LTE calling is enabled -->
-    <string name="high_definition_tag" translatable="false">%s</string>
-
-    <string name="tethered_notification_no_device_message">No connected device</string>
-    <string name="tethered_notification_one_device_message"><xliff:g id="count">%1$s</xliff:g> connected device</string>
-    <string name="tethered_notification_multi_device_message"><xliff:g id="count">%1$s</xliff:g> connected devices</string>
-
-    <!-- Keyguard strings -->
-    <!-- Sequence of characters used to separate carrier message strings in keyguard. Typically just vertical line
-         with spaces on either side. [CHAR LIMIT=3] -->
-    <string name="kg_sub_separator" translatable="false">" | "</string>
 
     <!-- Protected Apps Notification -->
     <string name="notify_package_component_protected_title">Activity launch blocked</string>
     <string name="notify_package_component_protected_text"><xliff:g id="app_name">%1$s</xliff:g> is protected from being launched. Tap to authenticate and launch the application.</string>
 
-    <!-- Battery fully charged notification -->
-    <string name="notify_battery_fully_charged_title">Battery fully charged</string>
-    <string name="notify_battery_fully_charged_text">Disconnect your device from the charger to improve battery longevity.</string>
-
-    <!-- Uicc hotswapped event configuration needed notification -->
-    <string name="uicc_hot_swapped_event_title">SIM cards have changed</string>
-    <string name="uicc_hot_swapped_event_text">Tap to set SIM card default preferences</string>
+    <!-- Notify user that they are in Lock-to-app (for devices without navbar) -->
+    <string name="lock_to_app_toast_no_navbar">To unpin this screen, touch and hold the Back button.</string>
 </resources>

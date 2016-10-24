@@ -16,13 +16,11 @@
 
 package com.android.server.connectivity;
 
-import static android.net.ConnectivityManager.TYPE_MOBILE;
-import static android.net.ConnectivityManager.TYPE_WIFI;
-
 import java.net.Inet4Address;
 
 import android.content.Context;
 import android.net.InterfaceConfiguration;
+import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.NetworkAgent;
@@ -35,6 +33,7 @@ import android.os.SystemProperties;
 import android.util.Slog;
 
 import com.android.server.net.BaseNetworkObserver;
+import com.android.internal.util.ArrayUtils;
 
 /**
  * @hide
@@ -46,6 +45,13 @@ public class Nat464Xlat extends BaseNetworkObserver {
 
     // This must match the interface prefix in clatd.c.
     private static final String CLAT_PREFIX = "v4-";
+
+    // The network types we will start clatd on.
+    private static final int[] NETWORK_TYPES = {
+            ConnectivityManager.TYPE_MOBILE,
+            ConnectivityManager.TYPE_WIFI,
+            ConnectivityManager.TYPE_ETHERNET,
+    };
 
     private final INetworkManagementService mNMService;
 
@@ -95,8 +101,8 @@ public class Nat464Xlat extends BaseNetworkObserver {
         if(!doXlat) {
             Slog.i(TAG, "Android Xlat is disabled");
         }
-        return connected && !hasIPv4Address && (((netType == TYPE_MOBILE) && doXlat )
-                                              || netType == TYPE_WIFI);
+        return connected && !hasIPv4Address && ArrayUtils.contains(NETWORK_TYPES, netType)
+               && ((netType == ConnectivityManager.TYPE_MOBILE) ? doXlat : true);
     }
 
     /**
@@ -131,7 +137,6 @@ public class Nat464Xlat extends BaseNetworkObserver {
         }
 
         try {
-            mNMService.unregisterObserver(this);
             mNMService.registerObserver(this);
         } catch(RemoteException e) {
             Slog.e(TAG, "startClat: Can't register interface observer for clat on " + mNetwork);
@@ -228,7 +233,7 @@ public class Nat464Xlat extends BaseNetworkObserver {
     }
 
     private void maybeSetIpv6NdOffload(String iface, boolean on) {
-        if (mNetwork.networkInfo.getType() != TYPE_WIFI) {
+        if (mNetwork.networkInfo.getType() != ConnectivityManager.TYPE_WIFI) {
             return;
         }
         try {
@@ -240,12 +245,16 @@ public class Nat464Xlat extends BaseNetworkObserver {
     }
 
     @Override
-    public void addressUpdated(String iface, LinkAddress clatAddress) {
+    public void interfaceLinkStateChanged(String iface, boolean up) {
         // Called by the InterfaceObserver on its own thread, so can race with stop().
-        if (isStarted() && mIface.equals(iface) && clatAddress != null) {
+        if (isStarted() && up && mIface.equals(iface)) {
             Slog.i(TAG, "interface " + iface + " is up, mIsRunning " + mIsRunning + "->true");
 
             if (!mIsRunning) {
+                LinkAddress clatAddress = getLinkAddress(iface);
+                if (clatAddress == null) {
+                    return;
+                }
                 mIsRunning = true;
                 maybeSetIpv6NdOffload(mBaseIface, false);
                 LinkProperties lp = new LinkProperties(mNetwork.linkProperties);

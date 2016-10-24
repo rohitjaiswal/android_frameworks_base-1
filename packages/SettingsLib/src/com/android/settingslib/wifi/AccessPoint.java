@@ -37,6 +37,7 @@ import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.UserHandle;
+import android.support.annotation.NonNull;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextUtils;
@@ -104,10 +105,12 @@ public class AccessPoint implements Comparable<AccessPoint> {
     private static final int PSK_WPA2 = 2;
     private static final int PSK_WPA_WPA2 = 3;
 
-    private static final int VISIBILITY_OUTDATED_AGE_IN_MILLI = 20000;
+    public static final int SIGNAL_LEVELS = 4;
+
     private final Context mContext;
 
     private String ssid;
+    private String bssid;
     private int security;
     private int networkId = WifiConfiguration.INVALID_NETWORK_ID;
 
@@ -123,8 +126,6 @@ public class AccessPoint implements Comparable<AccessPoint> {
     private AccessPointListener mAccessPointListener;
 
     private Object mTag;
-
-    public boolean foundInScanResult = false;
 
     public AccessPoint(Context context, Bundle savedState) {
         mContext = context;
@@ -169,7 +170,7 @@ public class AccessPoint implements Comparable<AccessPoint> {
     }
 
     @Override
-    public int compareTo(AccessPoint other) {
+    public int compareTo(@NonNull AccessPoint other) {
         // Active one goes first.
         if (isActive() && !other.isActive()) return -1;
         if (!isActive() && other.isActive()) return 1;
@@ -184,8 +185,9 @@ public class AccessPoint implements Comparable<AccessPoint> {
         if (networkId == WifiConfiguration.INVALID_NETWORK_ID
                 && other.networkId != WifiConfiguration.INVALID_NETWORK_ID) return 1;
 
-        // Sort by signal strength.
-        int difference = WifiManager.compareSignalLevel(other.mRssi, mRssi);
+        // Sort by signal strength, bucketed by level
+        int difference = WifiManager.calculateSignalLevel(other.mRssi, SIGNAL_LEVELS)
+                - WifiManager.calculateSignalLevel(mRssi, SIGNAL_LEVELS);
         if (difference != 0) {
             return difference;
         }
@@ -236,10 +238,13 @@ public class AccessPoint implements Comparable<AccessPoint> {
     }
 
     public boolean matches(WifiConfiguration config) {
-        if (config.isPasspoint() && mConfig != null && mConfig.isPasspoint())
+        if (config.isPasspoint() && mConfig != null && mConfig.isPasspoint()) {
             return config.FQDN.equals(mConfig.providerFriendlyName);
-        else
-            return ssid.equals(removeDoubleQuotes(config.SSID)) && security == getSecurity(config);
+        } else {
+            return ssid.equals(removeDoubleQuotes(config.SSID))
+                    && security == getSecurity(config)
+                    && (mConfig == null || mConfig.shared == config.shared);
+        }
     }
 
     public WifiConfiguration getConfig() {
@@ -259,7 +264,7 @@ public class AccessPoint implements Comparable<AccessPoint> {
         if (mRssi == Integer.MAX_VALUE) {
             return -1;
         }
-        return WifiManager.calculateSignalLevel(mRssi, 4);
+        return WifiManager.calculateSignalLevel(mRssi, SIGNAL_LEVELS);
     }
 
     public int getRssi() {
@@ -331,15 +336,15 @@ public class AccessPoint implements Comparable<AccessPoint> {
         return ssid;
     }
 
+    public String getBssid() {
+        return bssid;
+    }
+
     public CharSequence getSsid() {
         SpannableString str = new SpannableString(ssid);
         str.setSpan(new TtsSpan.VerbatimBuilder(ssid).build(), 0, ssid.length(),
                 Spannable.SPAN_INCLUSIVE_INCLUSIVE);
         return str;
-    }
-
-    public int getNetworkId() {
-        return networkId;
     }
 
     public String getConfigName() {
@@ -400,33 +405,20 @@ public class AccessPoint implements Comparable<AccessPoint> {
             summary.append(String.format(format, mConfig.providerFriendlyName));
         } else if (mConfig != null && mConfig.hasNoInternetAccess()) {
             summary.append(mContext.getString(R.string.wifi_no_internet));
-        } else if (mConfig != null && ((mConfig.status == WifiConfiguration.Status.DISABLED &&
-                mConfig.disableReason != WifiConfiguration.DISABLED_UNKNOWN_REASON)
-               || mConfig.autoJoinStatus
-                >= WifiConfiguration.AUTO_JOIN_DISABLED_ON_AUTH_FAILURE)) {
-            if (mConfig.autoJoinStatus
-                    >= WifiConfiguration.AUTO_JOIN_DISABLED_ON_AUTH_FAILURE) {
-                if (mConfig.disableReason == WifiConfiguration.DISABLED_DHCP_FAILURE) {
-                    summary.append(mContext.getString(R.string.wifi_disabled_network_failure));
-                } else if (mConfig.disableReason == WifiConfiguration.DISABLED_AUTH_FAILURE) {
+        } else if (mConfig != null && !mConfig.getNetworkSelectionStatus().isNetworkEnabled()) {
+            WifiConfiguration.NetworkSelectionStatus networkStatus =
+                    mConfig.getNetworkSelectionStatus();
+            switch (networkStatus.getNetworkSelectionDisableReason()) {
+                case WifiConfiguration.NetworkSelectionStatus.DISABLED_AUTHENTICATION_FAILURE:
                     summary.append(mContext.getString(R.string.wifi_disabled_password_failure));
-                } else {
-                    summary.append(mContext.getString(R.string.wifi_disabled_wifi_failure));
-                }
-            } else {
-                switch (mConfig.disableReason) {
-                    case WifiConfiguration.DISABLED_AUTH_FAILURE:
-                        summary.append(mContext.getString(R.string.wifi_disabled_password_failure));
-                        break;
-                    case WifiConfiguration.DISABLED_DHCP_FAILURE:
-                    case WifiConfiguration.DISABLED_DNS_FAILURE:
-                        summary.append(mContext.getString(R.string.wifi_disabled_network_failure));
-                        break;
-                    case WifiConfiguration.DISABLED_UNKNOWN_REASON:
-                    case WifiConfiguration.DISABLED_ASSOCIATION_REJECT:
-                        summary.append(mContext.getString(R.string.wifi_disabled_generic));
-                        break;
-                }
+                    break;
+                case WifiConfiguration.NetworkSelectionStatus.DISABLED_DHCP_FAILURE:
+                case WifiConfiguration.NetworkSelectionStatus.DISABLED_DNS_FAILURE:
+                    summary.append(mContext.getString(R.string.wifi_disabled_network_failure));
+                    break;
+                case WifiConfiguration.NetworkSelectionStatus.DISABLED_ASSOCIATION_REJECTION:
+                    summary.append(mContext.getString(R.string.wifi_disabled_generic));
+                    break;
             }
         } else if (mRssi == Integer.MAX_VALUE) { // Wifi out of range
             summary.append(mContext.getString(R.string.wifi_not_in_range));
@@ -443,11 +435,11 @@ public class AccessPoint implements Comparable<AccessPoint> {
                 summary.append(" f=" + Integer.toString(mInfo.getFrequency()));
             }
             summary.append(" " + getVisibilityStatus());
-            if (mConfig != null && mConfig.autoJoinStatus > 0) {
-                summary.append(" (" + mConfig.autoJoinStatus);
-                if (mConfig.blackListTimestamp > 0) {
+            if (mConfig != null && !mConfig.getNetworkSelectionStatus().isNetworkEnabled()) {
+                summary.append(" (" + mConfig.getNetworkSelectionStatus().getNetworkStatusString());
+                if (mConfig.getNetworkSelectionStatus().getDisableTime() > 0) {
                     long now = System.currentTimeMillis();
-                    long diff = (now - mConfig.blackListTimestamp)/1000;
+                    long diff = (now - mConfig.getNetworkSelectionStatus().getDisableTime()) / 1000;
                     long sec = diff%60; //seconds
                     long min = (diff/60)%60; //minutes
                     long hour = (min/60)%60; //hours
@@ -458,17 +450,19 @@ public class AccessPoint implements Comparable<AccessPoint> {
                 }
                 summary.append(")");
             }
-            if (mConfig != null && mConfig.numIpConfigFailures > 0) {
-                summary.append(" ipf=").append(mConfig.numIpConfigFailures);
-            }
-            if (mConfig != null && mConfig.numConnectionFailures > 0) {
-                summary.append(" cf=").append(mConfig.numConnectionFailures);
-            }
-            if (mConfig != null && mConfig.numAuthFailures > 0) {
-                summary.append(" authf=").append(mConfig.numAuthFailures);
-            }
-            if (mConfig != null && mConfig.numNoInternetAccessReports > 0) {
-                summary.append(" noInt=").append(mConfig.numNoInternetAccessReports);
+
+            if (mConfig != null) {
+                WifiConfiguration.NetworkSelectionStatus networkStatus =
+                        mConfig.getNetworkSelectionStatus();
+                for (int index = WifiConfiguration.NetworkSelectionStatus.NETWORK_SELECTION_ENABLE;
+                        index < WifiConfiguration.NetworkSelectionStatus
+                        .NETWORK_SELECTION_DISABLED_MAX; index++) {
+                    if (networkStatus.getDisableReasonCounter(index) != 0) {
+                        summary.append(" " + WifiConfiguration.NetworkSelectionStatus
+                                .getNetworkDisableReasonString(index) + "="
+                                + networkStatus.getDisableReasonCounter(index));
+                    }
+                }
             }
         }
         return summary.toString();
@@ -514,10 +508,6 @@ public class AccessPoint implements Comparable<AccessPoint> {
         Map<String, ScanResult> list = mScanResultCache.snapshot();
         // TODO: sort list by RSSI or age
         for (ScanResult result : list.values()) {
-            if (result.seen == 0)
-                continue;
-
-            if (result.autoJoinStatus != ScanResult.ENABLED) numBlackListed++;
 
             if (result.frequency >= LOWER_FREQ_5GHZ
                     && result.frequency <= HIGHER_FREQ_5GHZ) {
@@ -531,8 +521,6 @@ public class AccessPoint implements Comparable<AccessPoint> {
                 num24 = num24 + 1;
             }
 
-            // Ignore results seen, older than 20 seconds
-            if (now - result.seen > VISIBILITY_OUTDATED_AGE_IN_MILLI) continue;
 
             if (result.frequency >= LOWER_FREQ_5GHZ
                     && result.frequency <= HIGHER_FREQ_5GHZ) {
@@ -545,12 +533,6 @@ public class AccessPoint implements Comparable<AccessPoint> {
                     if (bssid != null && result.BSSID.equals(bssid)) scans5GHz.append("*");
                     scans5GHz.append("=").append(result.frequency);
                     scans5GHz.append(",").append(result.level);
-                    if (result.autoJoinStatus != 0) {
-                        scans5GHz.append(",st=").append(result.autoJoinStatus);
-                    }
-                    if (result.numIpConfigFailures != 0) {
-                        scans5GHz.append(",ipf=").append(result.numIpConfigFailures);
-                    }
                     scans5GHz.append("}");
                     n5++;
                 }
@@ -565,12 +547,6 @@ public class AccessPoint implements Comparable<AccessPoint> {
                     if (bssid != null && result.BSSID.equals(bssid)) scans24GHz.append("*");
                     scans24GHz.append("=").append(result.frequency);
                     scans24GHz.append(",").append(result.level);
-                    if (result.autoJoinStatus != 0) {
-                        scans24GHz.append(",st=").append(result.autoJoinStatus);
-                    }
-                    if (result.numIpConfigFailures != 0) {
-                        scans24GHz.append(",ipf=").append(result.numIpConfigFailures);
-                    }
                     scans24GHz.append("}");
                     n24++;
                 }
@@ -646,7 +622,12 @@ public class AccessPoint implements Comparable<AccessPoint> {
         } else if (config != null) {
             return matches(config);
         }
-        return false;
+        else {
+            // Might be an ephemeral connection with no WifiConfiguration. Try matching on SSID.
+            // (Note that we only do this if the WifiConfiguration explicitly equals INVALID).
+            // TODO: Handle hex string SSIDs.
+            return ssid.equals(removeDoubleQuotes(info.getSSID()));
+        }
     }
 
     public boolean isSaved() {
@@ -681,6 +662,7 @@ public class AccessPoint implements Comparable<AccessPoint> {
         else
             ssid = (config.SSID == null ? "" : removeDoubleQuotes(config.SSID));
 
+        bssid = config.BSSID;
         security = getSecurity(config);
         networkId = config.networkId;
         mConfig = config;
@@ -688,6 +670,7 @@ public class AccessPoint implements Comparable<AccessPoint> {
 
     private void initWithScanResult(ScanResult result) {
         ssid = result.SSID;
+        bssid = result.BSSID;
         security = getSecurity(result);
         if (security == SECURITY_PSK)
             pskType = getPskType(result);
@@ -770,6 +753,10 @@ public class AccessPoint implements Comparable<AccessPoint> {
         if (mAccessPointListener != null) {
             mAccessPointListener.onAccessPointChanged(this);
         }
+    }
+
+    void setRssi(int rssi) {
+        mRssi = rssi;
     }
 
     public static String getSummary(Context context, String ssid, DetailedState state,

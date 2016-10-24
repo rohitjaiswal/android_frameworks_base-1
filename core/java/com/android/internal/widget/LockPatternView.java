@@ -346,6 +346,7 @@ public class LockPatternView extends View {
         mExploreByTouchHelper = new PatternExploreByTouchHelper(this);
         setAccessibilityDelegate(mExploreByTouchHelper);
         mAudioManager = (AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE);
+        a.recycle();
     }
 
     public CellState[][] getCellStates() {

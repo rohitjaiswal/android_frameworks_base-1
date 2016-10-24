@@ -31,19 +31,18 @@ import android.graphics.PorterDuff;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.support.v7.graphics.Palette;
 import android.util.AttributeSet;
 import android.view.DisplayListCanvas;
 import android.view.RenderNodeAnimator;
 import android.view.View;
 import android.view.ViewAnimationUtils;
-import android.view.animation.AnimationUtils;
 import android.view.animation.Interpolator;
 import android.widget.ImageView;
 
+import com.android.internal.util.cm.palette.Palette;
+import com.android.systemui.Interpolators;
 import com.android.systemui.R;
 import com.android.systemui.statusbar.phone.KeyguardAffordanceHelper;
-import com.android.systemui.statusbar.phone.PhoneStatusBar;
 
 /**
  * An ImageView which does not have overlapping renderings commands and therefore does not need a
@@ -59,8 +58,6 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
 
     private final int mMinBackgroundRadius;
     private final Paint mCirclePaint;
-    private final Interpolator mAppearInterpolator;
-    private final Interpolator mDisappearInterpolator;
     private final int mInverseColor;
     private final int mNormalColor;
     private final ArgbEvaluator mColorInterpolator;
@@ -141,10 +138,6 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
         mInverseColor = 0xff000000;
         mMinBackgroundRadius = mContext.getResources().getDimensionPixelSize(
                 R.dimen.keyguard_affordance_min_background_radius);
-        mAppearInterpolator = AnimationUtils.loadInterpolator(mContext,
-                android.R.interpolator.linear_out_slow_in);
-        mDisappearInterpolator = AnimationUtils.loadInterpolator(mContext,
-                android.R.interpolator.fast_out_linear_in);
         mColorInterpolator = new ArgbEvaluator();
         mFlingAnimationUtils = new FlingAnimationUtils(mContext, 0.3f);
     }
@@ -187,7 +180,7 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
         if (mPreviewView != null) {
             mPreviewView.setVisibility(mLaunchingAffordance
                     ? oldPreviewView.getVisibility() : INVISIBLE);
-            mPreviewView.setVisibility(GONE);
+            mPreviewView.setVisibility(INVISIBLE);
             addOverlay();
         }
     }
@@ -283,7 +276,7 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
         });
         animatorToRadius.start();
         setImageAlpha(0, true);
-        if (mPreviewView != null && mPreviewView.getVisibility() == View.VISIBLE) {
+        if (mPreviewView != null) {
             mPreviewView.setVisibility(View.VISIBLE);
             mPreviewClipper = ViewAnimationUtils.createCircularReveal(
                     mPreviewView, getLeft() + mCenterX, getTop() + mCenterY, mCircleRadius,
@@ -311,7 +304,7 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
             RenderNodeAnimator animator = new RenderNodeAnimator(mHwCirclePaint,
                     RenderNodeAnimator.PAINT_ALPHA, 255);
             animator.setTarget(this);
-            animator.setInterpolator(PhoneStatusBar.ALPHA_IN);
+            animator.setInterpolator(Interpolators.ALPHA_IN);
             animator.setDuration(250);
             animator.start();
         }
@@ -332,7 +325,7 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
         RenderNodeAnimator animator = new RenderNodeAnimator(mHwCirclePaint,
                 RenderNodeAnimator.PAINT_ALPHA, 0);
         animator.setDuration(duration);
-        animator.setInterpolator(PhoneStatusBar.ALPHA_OUT);
+        animator.setInterpolator(Interpolators.ALPHA_OUT);
         animator.setTarget(this);
         animator.start();
     }
@@ -386,7 +379,7 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
                 invalidate();
                 if (nowHidden) {
                     if (mPreviewView != null) {
-                        mPreviewView.setVisibility(View.GONE);
+                        mPreviewView.setVisibility(View.INVISIBLE);
                     }
                 }
             } else if (!mCircleWillBeHidden) {
@@ -402,8 +395,8 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
             cancelAnimator(mPreviewClipper);
             ValueAnimator animator = getAnimatorToRadius(circleRadius);
             Interpolator interpolator = circleRadius == 0.0f
-                    ? mDisappearInterpolator
-                    : mAppearInterpolator;
+                    ? Interpolators.FAST_OUT_LINEAR_IN
+                    : Interpolators.LINEAR_OUT_SLOW_IN;
             animator.setInterpolator(interpolator);
             long duration = 250;
             if (!slowAnimation) {
@@ -425,7 +418,7 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
                 mPreviewClipper.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
-                        mPreviewView.setVisibility(View.GONE);
+                        mPreviewView.setVisibility(View.INVISIBLE);
                     }
                 });
                 mPreviewClipper.start();
@@ -488,8 +481,8 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
             animator.addListener(mScaleEndListener);
             if (interpolator == null) {
                 interpolator = imageScale == 0.0f
-                        ? mDisappearInterpolator
-                        : mAppearInterpolator;
+                        ? Interpolators.FAST_OUT_LINEAR_IN
+                        : Interpolators.LINEAR_OUT_SLOW_IN;
             }
             animator.setInterpolator(interpolator);
             if (duration == -1) {
@@ -551,8 +544,8 @@ public class KeyguardAffordanceView extends ImageView implements Palette.Palette
             animator.addListener(mAlphaEndListener);
             if (interpolator == null) {
                 interpolator = alpha == 0.0f
-                        ? mDisappearInterpolator
-                        : mAppearInterpolator;
+                        ? Interpolators.FAST_OUT_LINEAR_IN
+                        : Interpolators.LINEAR_OUT_SLOW_IN;
             }
             animator.setInterpolator(interpolator);
             if (duration == -1) {

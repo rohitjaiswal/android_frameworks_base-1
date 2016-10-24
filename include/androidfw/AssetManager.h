@@ -75,7 +75,6 @@ public:
     static const char* TARGET_PACKAGE_NAME;
     static const char* TARGET_APK_PATH;
     static const char* IDMAP_DIR;
-    static const char* APK_EXTENSION;
 
     typedef enum CacheMode {
         CACHE_UNKNOWN = 0,
@@ -94,29 +93,24 @@ public:
      * look in multiple places for assets.  It can be either a directory (for
      * finding assets as raw files on the disk) or a ZIP file.  This newly
      * added asset path will be examined first when searching for assets,
-     * before any that were previously added.
+     * before any that were previously added, the assets are added as shared
+     * library if appAsLib is true.
      *
      * Returns "true" on success, "false" on failure.  If 'cookie' is non-NULL,
      * then on success, *cookie is set to the value corresponding to the
      * newly-added asset source.
      */
-    bool addAssetPath(const String8& path, int32_t* cookie);
-    bool addOverlayPath(const String8& idmapPath, const String8& overlayApkpath, int32_t* cookie,
-                 const String8& resApkPath, const String8& targetPkgPath,
-                 const String8& prefixPath);
-    bool addCommonOverlayPath(const String8& path, int32_t* cookie,
-                 const String8& resApkPath, const String8& prefixPath);
-    bool addIconPath(const String8& path, int32_t* cookie,
-                 const String8& resApkPath, const String8& prefixPath, uint32_t pkgIdOverride);
-    bool removeOverlayPath(const String8& path, int32_t cookie);
+    bool addAssetPath(const String8& path, int32_t* cookie,
+        bool appAsLib=false, bool isSystemAsset=false);
+    bool addOverlayPath(const String8& path, int32_t* cookie);
 
-    /*                                                                       
+    /*
      * Convenience for adding the standard system assets.  Uses the
      * ANDROID_ROOT environment variable to find them.
      */
     bool addDefaultAssets();
 
-    /*                                                                       
+    /*
      * Iterate over the asset paths in this manager.  (Previously
      * added via addAssetPath() and addDefaultAssets().)  On first call,
      * 'cookie' must be 0, resulting in the first cookie being returned.
@@ -125,7 +119,7 @@ public:
      */
     int32_t nextAssetPath(const int32_t cookie) const;
 
-    /*                                                                       
+    /*
      * Return an asset path in the manager.  'which' must be between 0 and
      * countAssetPaths().
      */
@@ -228,43 +222,34 @@ public:
      * the current data.
      */
     bool isUpToDate();
-    
+
     /**
      * Get the known locales for this asset manager object.
      */
-    void getLocales(Vector<String8>* locales) const;
+    void getLocales(Vector<String8>* locales, bool includeSystemLocales=true) const;
 
     /**
      * Generate idmap data to translate resources IDs between a package and a
      * corresponding overlay package.
      */
-    bool createIdmap(const char* targetApkPath, const char* overlayApkPath, const char* cache_path,
-        uint32_t targetCrc, uint32_t overlayCrc,
-        time_t targetMtime, time_t overlayMtime,
-        uint32_t** outData, size_t* outSize);
-
-    String8 getBasePackageName(uint32_t index);
+    bool createIdmap(const char* targetApkPath, const char* overlayApkPath,
+        uint32_t targetCrc, uint32_t overlayCrc, uint32_t** outData, size_t* outSize);
 
 private:
     struct asset_path
     {
-        asset_path() : path(""), type(kFileTypeRegular), idmap(""), isSystemOverlay(false),
-                pkgIdOverride(0) {}
+        asset_path() : path(""), type(kFileTypeRegular), idmap(""),
+                       isSystemOverlay(false), isSystemAsset(false) {}
         String8 path;
         FileType type;
         String8 idmap;
         bool isSystemOverlay;
-        String8 prefixPath;
-        String8 resfilePath;
-        String8 resApkPath;
-        uint32_t pkgIdOverride;
+        bool isSystemAsset;
     };
 
     Asset* openInPathLocked(const char* fileName, AccessMode mode,
         const asset_path& path);
     Asset* openNonAssetInPathLocked(const char* fileName, AccessMode mode,
-        const asset_path& path, bool usePrefix = true);
-    Asset* openNonAssetInExactPathLocked(const char* fileName, AccessMode mode,
         const asset_path& path);
     Asset* openInLocaleVendorLocked(const char* fileName, AccessMode mode,
         const asset_path& path, const char* locale, const char* vendor);
@@ -275,7 +260,6 @@ private:
         const String8& dirName, const String8& fileName);
 
     ZipFileRO* getZipFileLocked(const asset_path& path);
-    ZipFileRO* getZipFileLocked(const String8& path);
     Asset* openAssetFromFileLocked(const String8& fileName, AccessMode mode);
     Asset* openAssetFromZipLocked(const ZipFileRO* pZipFile,
         const ZipEntryRO entry, AccessMode mode, const String8& entryName);
@@ -300,16 +284,12 @@ private:
     const ResTable* getResTable(bool required = true) const;
     void setLocaleLocked(const char* locale);
     void updateResourceParamsLocked() const;
-    bool appendPathToResTable(const asset_path& ap, size_t* entryIdx) const;
+    bool appendPathToResTable(const asset_path& ap, bool appAsLib=false) const;
 
     Asset* openIdmapLocked(const struct asset_path& ap) const;
 
     void addSystemOverlays(const char* pathOverlaysList, const String8& targetPackagePath,
             ResTable* sharedRes, size_t offset) const;
-
-    String8 getPkgName(const char *apkPath);
-
-    String8 getOverlayResPath(const char* cachePath);
 
     class SharedZip : public RefBase {
     public:
@@ -379,8 +359,6 @@ private:
 
         void addOverlay(const String8& path, const asset_path& overlay);
         bool getOverlay(const String8& path, size_t idx, asset_path* out) const;
-
-        void closeZip(const String8& zip);
         
     private:
         void closeZip(int idx);
@@ -401,9 +379,6 @@ private:
 
     mutable ResTable* mResources;
     ResTable_config* mConfig;
-
-    String8 mBasePackageName;
-    uint32_t mBasePackageIndex;
 
     /*
      * Cached data for "loose" files.  This lets us avoid poking at the

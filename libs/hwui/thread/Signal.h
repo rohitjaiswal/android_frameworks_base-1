@@ -26,7 +26,7 @@ namespace uirenderer {
 
 class Signal {
 public:
-    explicit Signal(Condition::WakeUpType type = Condition::WAKE_UP_ALL) : mType(type), mSignaled(false) { }
+    Signal(Condition::WakeUpType type = Condition::WAKE_UP_ALL) : mType(type), mSignaled(false) { }
     ~Signal() { }
 
     void signal() {

@@ -26,14 +26,14 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
-import android.provider.Settings;
 import android.os.RemoteException;
 import android.view.View;
 
-import org.cyanogenmod.internal.logging.CMMetricsLogger;
 import com.android.systemui.R;
 import com.android.systemui.screenshot.TakeScreenshotService;
 import com.android.systemui.qs.QSTile;
+
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 
 /** Quick settings tile: Screenshot **/
 public class ScreenshotTile extends QSTile<QSTile.BooleanState> {
@@ -47,7 +47,7 @@ public class ScreenshotTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
-    protected BooleanState newTileState() {
+    public BooleanState newTileState() {
         return new BooleanState();
     }
 
@@ -61,7 +61,7 @@ public class ScreenshotTile extends QSTile<QSTile.BooleanState> {
         mHost.collapsePanels();
         /* wait for the panel to close */
         try {
-             Thread.sleep(1500);
+             Thread.sleep(2000);
         } catch (InterruptedException ie) {
              // Do nothing
         }
@@ -69,39 +69,26 @@ public class ScreenshotTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
-    protected void handleSecondaryClick() {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.setClassName("com.android.gallery3d",
-            "com.android.gallery3d.app.GalleryActivity");
-        mHost.startActivityDismissingKeyguard(intent);
-    }
-
-    @Override
-    public void handleLongClick() {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.setClassName("com.android.gallery3d",
-            "com.android.gallery3d.app.GalleryActivity");
-        mHost.startActivityDismissingKeyguard(intent);
-    }
-
-    @Override
-    public int getMetricsCategory() {
-        return CMMetricsLogger.AICPEXTRAS;
+    public Intent getLongClickIntent() {
+        return new Intent().setComponent(new ComponentName(
+            "com.android.gallery3d", "com.android.gallery3d.app.GalleryActivity"));
     }
 
     @Override
     protected void handleUpdateState(BooleanState state, Object arg) {
-        state.visible = true;
         state.label = mContext.getString(R.string.quick_settings_screenshot_label);
-        state.contentDescription = mContext.getString(
-                R.string.accessibility_quick_settings_screenshot);
         state.icon = ResourceIcon.get(R.drawable.ic_qs_screenshot);
     }
 
-    /**private int screenshotDelay() {
-        return Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.SCREENSHOT_DELAY, 2);
-    }**/
+    @Override
+    public CharSequence getTileLabel() {
+        return mContext.getString(R.string.quick_settings_screenshot_label);
+    }
+
+    @Override
+    public int getMetricsCategory() {
+        return MetricsEvent.QUICK_SETTINGS;
+    }
 
     final Runnable mScreenshotTimeout = new Runnable() {
         @Override

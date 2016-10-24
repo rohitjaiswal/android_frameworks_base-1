@@ -24,10 +24,11 @@ LOCAL_SHARED_LIBRARIES := \
     libGLESv1_CM \
     libgui \
     libtinyalsa \
+    libregionalization \
     libmedia
 
-ifeq ($(TARGET_CONTINUOUS_SPLASH_ENABLED),true)
-    LOCAL_CFLAGS += -DCONTINUOUS_SPLASH
+ifeq ($(TARGET_BOOTANIMATION_MULTITHREAD_DECODE),true)
+    LOCAL_CFLAGS += -DMULTITHREAD_DECODE
 endif
 
 ifeq ($(TARGET_BOOTANIMATION_PRELOAD),true)
@@ -46,11 +47,9 @@ ifeq ($(TARGET_BOOTANIMATION_USE_RGB565),true)
     LOCAL_CFLAGS += -DUSE_565
 endif
 
-ifeq ($(TARGET_BOOTANIMATION_MULTITHREAD_DECODE),true)
-    LOCAL_CFLAGS += -DMULTITHREAD_DECODE
-endif
-
 LOCAL_MODULE:= bootanimation
+
+LOCAL_INIT_RC := bootanim.rc
 
 ifdef TARGET_32_BIT_SURFACEFLINGER
 LOCAL_32_BIT_ONLY := true

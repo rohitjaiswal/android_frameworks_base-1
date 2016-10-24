@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
- * Copyright (C) 2016 The CyanogenMod Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +18,13 @@ package com.android.internal.app;
 
 import com.android.internal.os.BatteryStatsImpl;
 
+import android.bluetooth.BluetoothActivityEnergyInfo;
+import android.net.wifi.WifiActivityEnergyInfo;
 import android.os.ParcelFileDescriptor;
 import android.os.WorkSource;
+import android.os.health.HealthStatsParceler;
 import android.telephony.DataConnectionRealTimeInfo;
+import android.telephony.ModemActivityInfo;
 import android.telephony.SignalStrength;
 
 interface IBatteryStats {
@@ -87,7 +90,7 @@ interface IBatteryStats {
     void noteWakeUp(String reason, int reasonUid);
     void noteInteractive(boolean interactive);
     void noteConnectivityChanged(int type, String extra);
-    void noteMobileRadioPowerState(int powerState, long timestampNs);
+    void noteMobileRadioPowerState(int powerState, long timestampNs, int uid);
     void notePhoneOn();
     void notePhoneOff();
     void notePhoneSignalStrength(in SignalStrength signalStrength);
@@ -118,21 +121,20 @@ interface IBatteryStats {
     void noteWifiRadioPowerState(int powerState, long timestampNs);
     void noteNetworkInterfaceType(String iface, int type);
     void noteNetworkStatsEnabled();
-    void noteDeviceIdleMode(boolean enabled, String activeReason, int activeUid);
-    void setBatteryState(int status, int health, int plugType, int level, int temp, int volt);
+    void noteDeviceIdleMode(int mode, String activeReason, int activeUid);
+    void setBatteryState(int status, int health, int plugType, int level, int temp, int volt,
+            int chargeUAh);
     long getAwakeTimeBattery();
     long getAwakeTimePlugged();
 
-    /** @hide */
-    byte[] getDockStatistics();
-    /** @hide */
-    ParcelFileDescriptor getDockStatisticsStream();
-    /** @hide **/
-    void resetStatistics();
-    /** @hide **/
-    void setDockBatteryState(int status, int health, int plugType, int level, int temp, int volt);
-    /** @hide **/
-    long getAwakeTimeDockBattery();
-    /** @hide **/
-    long getAwakeTimeDockPlugged();
+    void noteBleScanStarted(in WorkSource ws);
+    void noteBleScanStopped(in WorkSource ws);
+    void noteResetBleScan();
+
+    HealthStatsParceler takeUidSnapshot(int uid);
+    HealthStatsParceler[] takeUidSnapshots(in int[] uid);
+
+    oneway void noteBluetoothControllerActivity(in BluetoothActivityEnergyInfo info);
+    oneway void noteModemControllerActivity(in ModemActivityInfo info);
+    oneway void noteWifiControllerActivity(in WifiActivityEnergyInfo info);
 }

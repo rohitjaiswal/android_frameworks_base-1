@@ -11,9 +11,8 @@
 #include <utils/ByteOrder.h>
 #include <errno.h>
 #include <string.h>
-#include <androidfw/AssetManager.h>
 
-#ifndef HAVE_MS_C_RUNTIME
+#ifndef _WIN32
 #define O_BINARY 0
 #endif
 
@@ -584,51 +583,9 @@ status_t parseXMLResource(const sp<AaptFile>& file, ResXMLTree* outTree,
     return NO_ERROR;
 }
 
-sp<XMLNode> XMLNode::parseFromZip(const sp<AaptFile>& file) {
-    AssetManager assets;
-    int32_t cookie;
-
-    if (!assets.addAssetPath(file->getZipFile(), &cookie)) {
-        fprintf(stderr, "Error: Could not open path %s\n", file->getZipFile().string());
-        return NULL;
-    }
-
-    Asset* asset = assets.openNonAsset(cookie, file->getSourceFile(), Asset::ACCESS_BUFFER);
-    ssize_t len = asset->getLength();
-    const void* buf = asset->getBuffer(false);
-
-    XML_Parser parser = XML_ParserCreateNS(NULL, 1);
-    ParseState state;
-    state.filename = file->getPrintableSource();
-    state.parser = parser;
-    XML_SetUserData(parser, &state);
-    XML_SetElementHandler(parser, startElement, endElement);
-    XML_SetNamespaceDeclHandler(parser, startNamespace, endNamespace);
-    XML_SetCharacterDataHandler(parser, characterData);
-    XML_SetCommentHandler(parser, commentData);
-
-    bool done = true;
-    if (XML_Parse(parser, (char*) buf, len, done) == XML_STATUS_ERROR) {
-        SourcePos(file->getSourceFile(), (int)XML_GetCurrentLineNumber(parser)).error(
-            "Error parsing XML: %s\n", XML_ErrorString(XML_GetErrorCode(parser)));
-        return NULL;
-    }
-    XML_ParserFree(parser);
-    if (state.root == NULL) {
-        SourcePos(file->getSourceFile(), -1).error("No XML data generated when parsing");
-    }
-    return state.root;
-}
-
 sp<XMLNode> XMLNode::parse(const sp<AaptFile>& file)
 {
     char buf[16384];
-
-    //Check for zip first
-    if (file->getZipFile().length() > 0) {
-        return parseFromZip(file);
-    }
-
     int fd = open(file->getSourceFile().string(), O_RDONLY | O_BINARY);
     if (fd < 0) {
         SourcePos(file->getSourceFile(), -1).error("Unable to open file for read: %s",
@@ -736,6 +693,12 @@ const Vector<sp<XMLNode> >& XMLNode::getChildren() const
     return mChildren;
 }
 
+
+Vector<sp<XMLNode> >& XMLNode::getChildren()
+{
+    return mChildren;
+}
+
 const String8& XMLNode::getFilename() const
 {
     return mFilename;
@@ -758,6 +721,18 @@ const XMLNode::attribute_entry* XMLNode::getAttribute(const String16& ns,
     }
 
     return NULL;
+}
+
+bool XMLNode::removeAttribute(const String16& ns, const String16& name)
+{
+    for (size_t i = 0; i < mAttributes.size(); i++) {
+        const attribute_entry& ae(mAttributes.itemAt(i));
+        if (ae.ns == ns && ae.name == name) {
+            removeAttribute(i);
+            return true;
+        }
+    }
+    return false;
 }
 
 XMLNode::attribute_entry* XMLNode::editAttribute(const String16& ns,

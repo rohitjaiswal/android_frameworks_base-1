@@ -255,7 +255,6 @@ public final class InputDevice implements Parcelable {
      */
     public static final int SOURCE_TOUCH_NAVIGATION = 0x00200000 | SOURCE_CLASS_NONE;
 
-
     /**
      * The input source is a rotating encoder device whose motions should be interpreted as akin to
      * those of a scroll wheel.
@@ -275,7 +274,7 @@ public final class InputDevice implements Parcelable {
      *
      * @hide
      */
-    public static final int SOURCE_GESTURE_SENSOR = 0x00400000 | SOURCE_CLASS_NONE;
+    public static final int SOURCE_GESTURE_SENSOR = 0x00800000 | SOURCE_CLASS_NONE;
 
     /**
      * The input source is a joystick.
@@ -785,6 +784,24 @@ public final class InputDevice implements Parcelable {
      */
     public boolean hasButtonUnderPad() {
         return mHasButtonUnderPad;
+    }
+
+    /**
+     * Sets the current pointer type.
+     * @param pointerType the type of the pointer icon.
+     * @hide
+     */
+    public void setPointerType(int pointerType) {
+        InputManager.getInstance().setPointerIconType(pointerType);
+    }
+
+    /**
+     * Specifies the current custom pointer.
+     * @param icon the icon data.
+     * @hide
+     */
+    public void setCustomPointerIcon(PointerIcon icon) {
+        InputManager.getInstance().setCustomPointerIcon(icon);
     }
 
     /**

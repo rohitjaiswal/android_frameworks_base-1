@@ -24,37 +24,34 @@ import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewOutlineProvider;
 
-import com.android.systemui.R;
-
 /**
  * Like {@link ExpandableView}, but setting an outline for the height and clipping.
  */
 public abstract class ExpandableOutlineView extends ExpandableView {
 
     private final Rect mOutlineRect = new Rect();
-    protected final int mRoundedRectCornerRadius;
     private boolean mCustomOutline;
-    private float mRoundCornerRadius = 0;
-    private float mOutlineAlpha = 1f;
+    private float mOutlineAlpha = -1f;
+
+    ViewOutlineProvider mProvider = new ViewOutlineProvider() {
+        @Override
+        public void getOutline(View view, Outline outline) {
+            int translation = (int) getTranslation();
+            if (!mCustomOutline) {
+                outline.setRect(translation,
+                        mClipTopAmount,
+                        getWidth() + translation,
+                        Math.max(getActualHeight(), mClipTopAmount));
+            } else {
+                outline.setRect(mOutlineRect);
+            }
+            outline.setAlpha(mOutlineAlpha);
+        }
+    };
 
     public ExpandableOutlineView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        mRoundedRectCornerRadius = getResources().getDimensionPixelSize(
-                R.dimen.notification_material_rounded_rect_radius);
-        setOutlineProvider(new ViewOutlineProvider() {
-            @Override
-            public void getOutline(View view, Outline outline) {
-                if (!mCustomOutline) {
-                    outline.setRoundRect(0,
-                            mClipTopAmount,
-                            getWidth(),
-                            Math.max(getActualHeight(), mClipTopAmount), mRoundCornerRadius);
-                } else {
-                    outline.setRoundRect(mOutlineRect, mRoundCornerRadius);
-                }
-                outline.setAlpha(mOutlineAlpha);
-            }
-        });
+        setOutlineProvider(mProvider);
     }
 
     @Override
@@ -70,8 +67,15 @@ public abstract class ExpandableOutlineView extends ExpandableView {
     }
 
     protected void setOutlineAlpha(float alpha) {
-        mOutlineAlpha = alpha;
-        invalidateOutline();
+        if (alpha != mOutlineAlpha) {
+            mOutlineAlpha = alpha;
+            invalidateOutline();
+        }
+    }
+
+    @Override
+    public float getOutlineAlpha() {
+        return mOutlineAlpha;
     }
 
     protected void setOutlineRect(RectF rect) {
@@ -82,6 +86,29 @@ public abstract class ExpandableOutlineView extends ExpandableView {
             setClipToOutline(false);
             invalidateOutline();
         }
+    }
+
+    @Override
+    public int getOutlineTranslation() {
+        return mCustomOutline ? mOutlineRect.left : (int) getTranslation();
+    }
+
+    public void updateOutline() {
+        if (mCustomOutline) {
+            return;
+        }
+        boolean hasOutline = true;
+        if (isChildInGroup()) {
+            hasOutline = isGroupExpanded() && !isGroupExpansionChanging();
+        } else if (isSummaryWithChildren()) {
+            hasOutline = !isGroupExpanded() || isGroupExpansionChanging();
+        }
+        setOutlineProvider(hasOutline ? mProvider : null);
+    }
+
+    public boolean isOutlineShowing() {
+        ViewOutlineProvider op = getOutlineProvider();
+        return op != null;
     }
 
     protected void setOutlineRect(float left, float top, float right, float bottom) {
@@ -97,7 +124,4 @@ public abstract class ExpandableOutlineView extends ExpandableView {
         invalidateOutline();
     }
 
-    protected void setRoundCornerRadius(float roundRadius) {
-        mRoundCornerRadius = roundRadius;
-    }
 }

@@ -347,10 +347,8 @@ public class RadioGroup extends LinearLayout {
             }
             mProtectFromCheckedChange = false;
 
-            if (isChecked) {
-                int id = buttonView.getId();
-                setCheckedId(id);
-            }
+            int id = buttonView.getId();
+            setCheckedId(id);
         }
     }
 

@@ -97,11 +97,22 @@ public final class ParcelableConnection implements Parcelable {
         return mState;
     }
 
-    // Bit mask of actions a call supports, values are defined in {@link CallCapabilities}.
+    /**
+     * Returns the current connection capabilities bit-mask.  Connection capabilities are defined as
+     * {@code CAPABILITY_*} constants in {@link Connection}.
+     *
+     * @return Bit-mask containing capabilities of the connection.
+     */
     public int getConnectionCapabilities() {
         return mConnectionCapabilities;
     }
 
+    /**
+     * Returns the current connection properties bit-mask.  Connection properties are defined as
+     * {@code PROPERTY_*} constants in {@link Connection}.
+     *
+     * @return Bit-mask containing properties of the connection.
+     */
     public int getConnectionProperties() {
         return mConnectionProperties;
     }
@@ -183,7 +194,6 @@ public final class ParcelableConnection implements Parcelable {
             PhoneAccountHandle phoneAccount = source.readParcelable(classLoader);
             int state = source.readInt();
             int capabilities = source.readInt();
-            int properties = source.readInt();
             Uri address = source.readParcelable(classLoader);
             int addressPresentation = source.readInt();
             String callerDisplayName = source.readString();
@@ -198,7 +208,8 @@ public final class ParcelableConnection implements Parcelable {
             DisconnectCause disconnectCause = source.readParcelable(classLoader);
             List<String> conferenceableConnectionIds = new ArrayList<>();
             source.readStringList(conferenceableConnectionIds);
-            Bundle extras = source.readBundle(classLoader);
+            Bundle extras = Bundle.setDefusable(source.readBundle(classLoader), true);
+            int properties = source.readInt();
 
             return new ParcelableConnection(
                     phoneAccount,
@@ -238,7 +249,6 @@ public final class ParcelableConnection implements Parcelable {
         destination.writeParcelable(mPhoneAccount, 0);
         destination.writeInt(mState);
         destination.writeInt(mConnectionCapabilities);
-        destination.writeInt(mConnectionProperties);
         destination.writeParcelable(mAddress, 0);
         destination.writeInt(mAddressPresentation);
         destination.writeString(mCallerDisplayName);
@@ -253,5 +263,6 @@ public final class ParcelableConnection implements Parcelable {
         destination.writeParcelable(mDisconnectCause, 0);
         destination.writeStringList(mConferenceableConnectionIds);
         destination.writeBundle(mExtras);
+        destination.writeInt(mConnectionProperties);
     }
 }

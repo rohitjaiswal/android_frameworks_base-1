@@ -16,6 +16,8 @@
 
 package com.android.server.wm;
 
+import static com.android.server.wm.WindowManagerDebugConfig.TAG_WM;
+
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
@@ -23,7 +25,6 @@ import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.Paint.FontMetricsInt;
-import android.os.SystemProperties;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -54,9 +55,9 @@ class Watermark {
 
     Watermark(Display display, DisplayMetrics dm, SurfaceSession session, String[] tokens) {
         if (false) {
-            Log.i(WindowManagerService.TAG, "*********************** WATERMARK");
+            Log.i(TAG_WM, "*********************** WATERMARK");
             for (int i=0; i<tokens.length; i++) {
-                Log.i(WindowManagerService.TAG, "  TOKEN #" + i + ": " + tokens[i]);
+                Log.i(TAG_WM, "  TOKEN #" + i + ": " + tokens[i]);
             }
         }
 
@@ -77,17 +78,9 @@ class Watermark {
             else c2 -= '0';
             builder.append((char)(255-((c1*16)+c2)));
         }
-
-        int appendDisplayVersion = (WindowManagerService.getPropertyInt(tokens, 10,
-                TypedValue.COMPLEX_UNIT_PX, 0, dm));
-        if (appendDisplayVersion != 0) {
-            builder.append(" - ");
-            builder.append(SystemProperties.get("ro.cm.display.version"));
-        }
-
         mText = builder.toString();
         if (false) {
-            Log.i(WindowManagerService.TAG, "Final text: " + mText);
+            Log.i(TAG_WM, "Final text: " + mText);
         }
 
         int fontSize = WindowManagerService.getPropertyInt(tokens, 1,
@@ -158,32 +151,27 @@ class Watermark {
             if (c != null) {
                 c.drawColor(0, PorterDuff.Mode.CLEAR);
 
-                if (mDeltaX != 0 || mDeltaY != 0) {
-                    int deltaX = mDeltaX;
-                    int deltaY = mDeltaY;
+                int deltaX = mDeltaX;
+                int deltaY = mDeltaY;
 
-                    // deltaX shouldn't be close to a round fraction of our
-                    // x step, or else things will line up too much.
-                    int div = (dw+mTextWidth)/deltaX;
-                    int rem = (dw+mTextWidth) - (div*deltaX);
-                    int qdelta = deltaX/4;
-                    if (rem < qdelta || rem > (deltaX-qdelta)) {
-                        deltaX += deltaX/3;
-                    }
+                // deltaX shouldn't be close to a round fraction of our
+                // x step, or else things will line up too much.
+                int div = (dw+mTextWidth)/deltaX;
+                int rem = (dw+mTextWidth) - (div*deltaX);
+                int qdelta = deltaX/4;
+                if (rem < qdelta || rem > (deltaX-qdelta)) {
+                    deltaX += deltaX/3;
+                }
 
-                    int y = -mTextHeight;
-                    int x = -mTextWidth;
-                    while (y < (dh+mTextHeight)) {
-                        c.drawText(mText, x, y, mTextPaint);
-                        x += deltaX;
-                        if (x >= dw) {
-                            x -= (dw+mTextWidth);
-                            y += deltaY;
-                        }
+                int y = -mTextHeight;
+                int x = -mTextWidth;
+                while (y < (dh+mTextHeight)) {
+                    c.drawText(mText, x, y, mTextPaint);
+                    x += deltaX;
+                    if (x >= dw) {
+                        x -= (dw+mTextWidth);
+                        y += deltaY;
                     }
-                } else {
-                    c.drawText(mText, dw - mTextWidth,
-                        dh - mTextHeight*4, mTextPaint);
                 }
                 mSurface.unlockCanvasAndPost(c);
             }

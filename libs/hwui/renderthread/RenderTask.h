@@ -73,7 +73,7 @@ typedef void* (*RunnableMethod)(void* data);
 
 class MethodInvokeRenderTask : public RenderTask {
 public:
-    explicit MethodInvokeRenderTask(RunnableMethod method)
+    MethodInvokeRenderTask(RunnableMethod method)
         : mMethod(method), mReturnPtr(nullptr) {}
 
     void* payload() { return mData; }

@@ -19,44 +19,23 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/qs_background_primary"
-        android:paddingBottom="12dp"
-        android:elevation="2dp">
+        android:clipToPadding="false"
+        android:clipChildren="false"
+        android:elevation="4dp">
 
-    <ImageView
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:id="@+id/aicp_panel_logo"
-            android:layout_gravity="center"
-            android:src="@drawable/ic_qs_aicp_panel_logo"
-            android:adjustViewBounds="true"
-            android:layout_marginLeft="40dp"
-            android:layout_marginTop="40dp"
-            android:layout_marginRight="40dp"
-            android:layout_marginBottom="0dp"
-            android:scaleType="fitEnd" />
-
-    <com.android.systemui.qs.QSDragPanel
+    <com.android.systemui.qs.QSPanel
             android:id="@+id/quick_settings_panel"
-            android:background="@color/quick_settings_panel_background"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
-
-<LinearLayout
-        android:id="@+id/task_manager_panel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/qs_detail_background"
-        android:orientation="vertical"
-        android:visibility="gone" >
-        <include
-            layout="@layout/memory_usage_item"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
-        <LinearLayout
-            android:id="@+id/task_manager_list"
+            android:background="#0000"
+            android:layout_marginTop="@dimen/status_bar_header_height"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
-    </LinearLayout>
-</com.android.systemui.qs.QSContainer>
+            android:paddingBottom="8dp" />
 
+    <include layout="@layout/quick_status_bar_expanded_header" />
+
+    <include android:id="@+id/qs_detail" layout="@layout/qs_detail" />
+
+    <include android:id="@+id/qs_customize" layout="@layout/qs_customize_panel"
+        android:visibility="gone" />
+
+</com.android.systemui.qs.QSContainer>

@@ -16,37 +16,22 @@
 
 package com.android.systemui.statusbar.phone;
 
-import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.ContentUris;
-import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.content.res.Resources;
-import android.database.ContentObserver;
-import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.Rect;
 import android.graphics.drawable.Animatable;
-import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.RippleDrawable;
-import android.graphics.drawable.TransitionDrawable;
-import android.graphics.Typeface;
-import android.os.Handler;
-import android.os.IRemoteCallback;
-import android.os.RemoteException;
-import android.os.UserHandle;
-import android.os.Vibrator;
+import android.net.Uri;
 import android.provider.AlarmClock;
 import android.provider.CalendarContract;
-import android.provider.CalendarContract.Events;
-import android.provider.Settings;
-import android.net.Uri;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.util.MathUtils;
 import android.util.TypedValue;
 import android.view.View;
@@ -59,44 +44,37 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.android.internal.util.aicp.WeatherController;
-import com.android.internal.util.aicp.WeatherControllerImpl;
 import com.android.keyguard.KeyguardStatusView;
-import com.android.systemui.BatteryLevelTextView;
 import com.android.systemui.BatteryMeterView;
-import com.android.systemui.DockBatteryMeterView;
 import com.android.systemui.FontSizeUtils;
 import com.android.systemui.R;
-import com.android.systemui.cm.UserContentObserver;
-import com.android.systemui.omni.StatusBarHeaderMachine;
-import com.android.systemui.qs.QSDragPanel;
 import com.android.systemui.qs.QSPanel;
+import com.android.systemui.qs.QSPanel.Callback;
 import com.android.systemui.qs.QSTile;
+import com.android.systemui.qs.QSTile.DetailAdapter;
 import com.android.systemui.statusbar.policy.BatteryController;
-import com.android.systemui.statusbar.policy.DockBatteryController;
-import com.android.systemui.statusbar.policy.NetworkControllerImpl.EmergencyListener;
+import com.android.systemui.statusbar.policy.NetworkController.EmergencyListener;
 import com.android.systemui.statusbar.policy.NextAlarmController;
 import com.android.systemui.statusbar.policy.UserInfoController;
+import com.android.systemui.statusbar.policy.WeatherController;
+import com.android.systemui.statusbar.policy.WeatherControllerImpl;
 import com.android.systemui.tuner.TunerService;
 
 import java.text.NumberFormat;
 
-import cyanogenmod.app.StatusBarPanelCustomTile;
 import cyanogenmod.providers.CMSettings;
-import org.cyanogenmod.internal.logging.CMMetricsLogger;
+import cyanogenmod.weather.util.WeatherUtils;
 
 /**
  * The view to manage the header area in the expanded status bar.
  */
-public class StatusBarHeaderView extends RelativeLayout implements View.OnClickListener, View.OnLongClickListener,
-        NextAlarmController.NextAlarmChangeCallback, WeatherController.Callback, EmergencyListener,
-        StatusBarHeaderMachine.IStatusBarHeaderMachineObserver {
-    static final String TAG = "StatusBarHeaderView";
+public class StatusBarHeaderView extends BaseStatusBarHeader implements View.OnClickListener,
+        BatteryController.BatteryStateChangeCallback, NextAlarmController.NextAlarmChangeCallback,
+        EmergencyListener, WeatherController.Callback, TunerService.Tunable {
 
     private boolean mExpanded;
     private boolean mListening;
 
-    private View mHeaderView;
     private ViewGroup mSystemIconsContainer;
     private ViewGroup mWeatherContainer;
     private View mSystemIconsSuperContainer;
@@ -112,19 +90,14 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
     private View mSignalCluster;
     private SettingsButton mSettingsButton;
     private View mSettingsContainer;
-    private View mHaloButton;
-    private boolean mShowhaloButton;
-    private boolean mHaloActive;
     private View mQsDetailHeader;
     private TextView mQsDetailHeaderTitle;
     private Switch mQsDetailHeaderSwitch;
     private ImageView mQsDetailHeaderProgress;
     private TextView mEmergencyCallsOnly;
-    private BatteryLevelTextView mBatteryLevel;
-    private BatteryLevelTextView mDockBatteryLevel;
+    private TextView mBatteryLevel;
     private TextView mAlarmStatus;
     private TextView mWeatherLine1, mWeatherLine2;
-    private TextView mEditTileDoneText;
 
     private boolean mShowEmergencyCallsOnly;
     private boolean mAlarmShowing;
@@ -144,12 +117,6 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
     private int mClockCollapsedSize;
     private int mClockExpandedSize;
 
-    protected Vibrator mVibrator;
-
-    // Task manager
-    private boolean mShowTaskManager;
-    private View mTaskManagerButton;
-
     /**
      * In collapsed QS, the clock and avatar are scaled down a bit post-layout to allow for a nice
      * transition. These values determine that factor.
@@ -158,9 +125,10 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
     private float mAvatarCollapsedScaleFactor;
 
     private ActivityStarter mActivityStarter;
+    private BatteryController mBatteryController;
     private NextAlarmController mNextAlarmController;
     private WeatherController mWeatherController;
-    private QSDragPanel mQSPanel;
+    private QSPanel mQSPanel;
 
     private final Rect mClipBounds = new Rect();
 
@@ -173,54 +141,9 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
     private float mCurrentT;
     private boolean mShowingDetail;
     private boolean mDetailTransitioning;
-    private SettingsObserver mSettingsObserver;
     private boolean mShowWeather;
-    private boolean mShowBatteryTextExpanded;
 
-    private QSTile.DetailAdapter mEditingDetailAdapter;
-    private boolean mEditing;
-
-    private ImageView mBackgroundImage;
-    private Drawable mCurrentBackground;
-    private float mLastHeight;
-
-    private UserInfoController mUserInfoController;
-
-    // QS header alpha
-    private int mQSHeaderAlpha;
-
-    private int headerShadow;
-    private float textShadow;
-    private int tShadowColor;
-    private int customHeader;
-
-    // Font style
-    public static final int FONT_NORMAL = 0;
-    public static final int FONT_ITALIC = 1;
-    public static final int FONT_BOLD = 2;
-    public static final int FONT_BOLD_ITALIC = 3;
-    public static final int FONT_LIGHT = 4;
-    public static final int FONT_LIGHT_ITALIC = 5;
-    public static final int FONT_THIN = 6;
-    public static final int FONT_THIN_ITALIC = 7;
-    public static final int FONT_CONDENSED = 8;
-    public static final int FONT_CONDENSED_ITALIC = 9;
-    public static final int FONT_CONDENSED_LIGHT = 10;
-    public static final int FONT_CONDENSED_LIGHT_ITALIC = 11;
-    public static final int FONT_CONDENSED_BOLD = 12;
-    public static final int FONT_CONDENSED_BOLD_ITALIC = 13;
-    public static final int FONT_MEDIUM = 14;
-    public static final int FONT_MEDIUM_ITALIC = 15;
-    public static final int FONT_BLACK = 16;
-    public static final int FONT_BLACK_ITALIC = 17;
-    public static final int FONT_DANCINGSCRIPT = 18;
-    public static final int FONT_DANCINGSCRIPT_BOLD = 19;
-    public static final int FONT_COMINGSOON = 20;
-    public static final int FONT_NOTOSERIF = 21;
-    public static final int FONT_NOTOSERIF_ITALIC = 22;
-    public static final int FONT_NOTOSERIF_BOLD = 23;
-    public static final int FONT_NOTOSERIF_BOLD_ITALIC = 24;
-    private int mStatusBarHeaderFontStyle = FONT_NORMAL;
+    private boolean mAllowExpand = true;
 
     public StatusBarHeaderView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -229,60 +152,41 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
-        setOnLongClickListener(this);
-        mHeaderView = findViewById(R.id.header);
         mSystemIconsSuperContainer = findViewById(R.id.system_icons_super_container);
         mSystemIconsContainer = (ViewGroup) findViewById(R.id.system_icons_container);
         mSystemIconsSuperContainer.setOnClickListener(this);
-        mSystemIconsSuperContainer.setOnLongClickListener(this);
         mDateGroup = findViewById(R.id.date_group);
         mDateGroup.setOnClickListener(this);
-        mDateGroup.setOnLongClickListener(this);
         mClock = findViewById(R.id.clock);
         mClock.setOnClickListener(this);
-        mClock.setOnLongClickListener(this);
         mTime = (TextView) findViewById(R.id.time_view);
         mAmPm = (TextView) findViewById(R.id.am_pm_view);
         mMultiUserSwitch = (MultiUserSwitch) findViewById(R.id.multi_user_switch);
-        mMultiUserSwitch.setOnLongClickListener(this);
         mMultiUserAvatar = (ImageView) findViewById(R.id.multi_user_avatar);
         mDateCollapsed = (TextView) findViewById(R.id.date_collapsed);
         mDateExpanded = (TextView) findViewById(R.id.date_expanded);
         mSettingsButton = (SettingsButton) findViewById(R.id.settings_button);
         mSettingsContainer = findViewById(R.id.settings_button_container);
         mSettingsButton.setOnClickListener(this);
-        mTaskManagerButton = findViewById(R.id.task_manager_button);
-        mTaskManagerButton.setOnLongClickListener(this);
-        mHaloButton = findViewById(R.id.halo_button);
-        mHaloButton.setOnClickListener(this);
-        mHaloButton.setOnLongClickListener(this);
         mQsDetailHeader = findViewById(R.id.qs_detail_header);
         mQsDetailHeader.setAlpha(0);
-        mVibrator = (Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE);
         mQsDetailHeaderTitle = (TextView) mQsDetailHeader.findViewById(android.R.id.title);
         mQsDetailHeaderSwitch = (Switch) mQsDetailHeader.findViewById(android.R.id.toggle);
         mQsDetailHeaderProgress = (ImageView) findViewById(R.id.qs_detail_header_progress);
         mEmergencyCallsOnly = (TextView) findViewById(R.id.header_emergency_calls_only);
-        mBatteryLevel = (BatteryLevelTextView) findViewById(R.id.battery_level_text);
-        mDockBatteryLevel = (BatteryLevelTextView) findViewById(R.id.dock_battery_level_text);
+        mBatteryLevel = (TextView) findViewById(R.id.battery_level);
         mAlarmStatus = (TextView) findViewById(R.id.alarm_status);
         mAlarmStatus.setOnClickListener(this);
         mSignalCluster = findViewById(R.id.signal_cluster);
         mSystemIcons = (LinearLayout) findViewById(R.id.system_icons);
         mWeatherContainer = (LinearLayout) findViewById(R.id.weather_container);
         mWeatherContainer.setOnClickListener(this);
-        mWeatherContainer.setOnLongClickListener(this);
         mWeatherLine1 = (TextView) findViewById(R.id.weather_line_1);
         mWeatherLine2 = (TextView) findViewById(R.id.weather_line_2);
-        mEditTileDoneText = (TextView) findViewById(R.id.done);
-        mSettingsObserver = new SettingsObserver(new Handler());
-        mBackgroundImage = (ImageView) findViewById(R.id.background_image);
         loadDimens();
         updateVisibilities();
         updateClockScale();
         updateAvatarScale();
-        setQSHeaderAlpha();
-        setStatusBarHeaderFontStyle(mStatusBarHeaderFontStyle);
         addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
             @Override
             public void onLayoutChange(View v, int left, int top, int right,
@@ -307,22 +211,9 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
 
         // RenderThread is doing more harm than good when touching the header (to expand quick
         // settings), so disable it for this view
-        Drawable d = getBackground();
-        if (d instanceof RippleDrawable) {
-            ((RippleDrawable) d).setForceSoftware(true);
-        }
-        d = mSettingsButton.getBackground();
-        if (d instanceof RippleDrawable) {
-            ((RippleDrawable) d).setForceSoftware(true);
-        }
-        d = mSystemIconsSuperContainer.getBackground();
-        if (d instanceof RippleDrawable) {
-            ((RippleDrawable) d).setForceSoftware(true);
-        }
-        d = mHaloButton.getBackground();
-        if (d instanceof RippleDrawable) {
-            ((RippleDrawable) d).setForceSoftware(true);
-        }
+        ((RippleDrawable) getBackground()).setForceSoftware(true);
+        ((RippleDrawable) mSettingsButton.getBackground()).setForceSoftware(true);
+        ((RippleDrawable) mSystemIconsSuperContainer.getBackground()).setForceSoftware(true);
     }
 
     @Override
@@ -337,18 +228,13 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
             mCaptureValues = false;
             updateLayoutValues(mCurrentT);
         }
-
-        if (getLayoutDirection() == LAYOUT_DIRECTION_RTL) {
-            mAlarmStatus.setX(mDateGroup.getLeft() + mDateCollapsed.getLeft()
-                    - mAlarmStatus.getWidth());
-        } else {
-            mAlarmStatus.setX(mDateGroup.getLeft() + mDateCollapsed.getRight());
-        }
+        mAlarmStatus.setX(mDateGroup.getLeft() + mDateCollapsed.getRight());
     }
 
     @Override
     protected void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        FontSizeUtils.updateFontSize(mBatteryLevel, R.dimen.battery_level_text_size);
         FontSizeUtils.updateFontSize(mEmergencyCallsOnly,
                 R.dimen.qs_emergency_calls_only_text_size);
         FontSizeUtils.updateFontSize(mDateCollapsed, R.dimen.qs_date_collapsed_size);
@@ -365,27 +251,8 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         mClockExpandedSize = getResources().getDimensionPixelSize(R.dimen.qs_time_expanded_size);
         mClockCollapsedScaleFactor = (float) mClockCollapsedSize / (float) mClockExpandedSize;
 
-        if (mEditTileDoneText != null) {
-            mEditTileDoneText.setText(R.string.quick_settings_done);
-        }
-
         updateClockScale();
         updateClockCollapsedMargin();
-    }
-
-    public void vibrateheader(int duration) {
-        if (mVibrator != null) {
-            if (mVibrator.hasVibrator()) { mVibrator.vibrate(duration); }
-        }
-    }
-
-    @Override
-    protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
-        if (mUserInfoController != null) {
-            mUserInfoController.removeListener(mUserInfoChangedListener);
-        }
-        setListening(false);
     }
 
     private void updateClockCollapsedMargin() {
@@ -425,42 +292,23 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         mClockCollapsedSize = getResources().getDimensionPixelSize(R.dimen.qs_time_collapsed_size);
         mClockExpandedSize = getResources().getDimensionPixelSize(R.dimen.qs_time_expanded_size);
         mClockCollapsedScaleFactor = (float) mClockCollapsedSize / (float) mClockExpandedSize;
+
     }
 
     public void setActivityStarter(ActivityStarter activityStarter) {
         mActivityStarter = activityStarter;
-        if (mMultiUserSwitch != null) {
-            mMultiUserSwitch.setActivityStarter(activityStarter);
-        }
     }
 
     public void setBatteryController(BatteryController batteryController) {
-        BatteryMeterView v = ((BatteryMeterView) findViewById(R.id.battery));
-        v.setBatteryStateRegistar(batteryController);
-        v.setBatteryController(batteryController);
-        mBatteryLevel.setBatteryStateRegistar(batteryController);
-    }
-
-    public void setDockBatteryController(DockBatteryController dockBatteryController) {
-        DockBatteryMeterView v = ((DockBatteryMeterView) findViewById(R.id.dock_battery));
-        if (dockBatteryController != null) {
-            v.setBatteryStateRegistar(dockBatteryController);
-            mDockBatteryLevel.setBatteryStateRegistar(dockBatteryController);
-        } else {
-            if (v != null) {
-                removeView(v);
-            }
-            if (mDockBatteryLevel != null) {
-                removeView(mDockBatteryLevel);
-                mDockBatteryLevel = null;
-            }
-        }
+        mBatteryController = batteryController;
+        ((BatteryMeterView) findViewById(R.id.battery)).setBatteryController(batteryController);
     }
 
     public void setNextAlarmController(NextAlarmController nextAlarmController) {
         mNextAlarmController = nextAlarmController;
     }
 
+    @Override
     public void setWeatherController(WeatherController weatherController) {
         mWeatherController = weatherController;
     }
@@ -470,7 +318,7 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
     }
 
     public int getExpandedHeight() {
-        return mExpandedHeight;
+        return mAllowExpand ? mExpandedHeight : mCollapsedHeight;
     }
 
     public void setListening(boolean listening) {
@@ -482,12 +330,12 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
     }
 
     public void setExpanded(boolean expanded) {
+        if (!mAllowExpand) {
+            expanded = false;
+        }
         boolean changed = expanded != mExpanded;
         mExpanded = expanded;
         if (changed) {
-            if (mShowingDetail && !expanded) {
-                mQsPanelCallback.onShowingDetail(null);
-            }
             updateEverything();
         }
     }
@@ -501,14 +349,6 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         updateClockScale();
         updateAvatarScale();
         updateClockLp();
-        requestCaptureValues();
-    }
-
-    void setTaskManagerEnabled(boolean enabled) {
-        mShowTaskManager = enabled;
-        updateVisibilities();
-        updateSystemIconsLayoutParams();
-        updateMultiUserSwitch();
         requestCaptureValues();
     }
 
@@ -527,22 +367,13 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         mAlarmStatus.setVisibility(mExpanded && mAlarmShowing ? View.VISIBLE : View.INVISIBLE);
         mSettingsContainer.setVisibility(mExpanded ? View.VISIBLE : View.INVISIBLE);
         mWeatherContainer.setVisibility(mExpanded && mShowWeather ? View.VISIBLE : View.GONE);
-        mHaloButton.setVisibility(mExpanded && mShowhaloButton ? View.VISIBLE : mShowhaloButton ? View.INVISIBLE : View.GONE);
-        mQsDetailHeader.setVisibility(mExpanded && mShowingDetail ? View.VISIBLE : View.INVISIBLE);
-        mTaskManagerButton.setVisibility(mExpanded && mShowTaskManager ? View.VISIBLE : View.GONE);
-        mQsDetailHeader.setVisibility(mExpanded && mShowingDetail ? View.VISIBLE : View.GONE);
+        mQsDetailHeader.setVisibility(mExpanded && mShowingDetail? View.VISIBLE : View.INVISIBLE);
         if (mSignalCluster != null) {
             updateSignalClusterDetachment();
         }
         mEmergencyCallsOnly.setVisibility(mExpanded && mShowEmergencyCallsOnly ? VISIBLE : GONE);
-        mBatteryLevel.setForceShown(mExpanded && mShowBatteryTextExpanded);
-        mBatteryLevel.setVisibility(View.VISIBLE);
-        if (mDockBatteryLevel != null) {
-            mDockBatteryLevel.setForceShown(mExpanded && mShowBatteryTextExpanded);
-            mDockBatteryLevel.setVisibility(View.VISIBLE);
-        }
-        applyTextShadow();
-        applyHeaderBackgroundShadow();
+        mBatteryLevel.setVisibility(mExpanded ? View.VISIBLE : View.GONE);
+        mSettingsContainer.findViewById(R.id.tuner_icon).setVisibility(View.INVISIBLE);
     }
 
     private void updateSignalClusterDetachment() {
@@ -563,29 +394,28 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
     }
 
     private void updateSystemIconsLayoutParams() {
-        RelativeLayout.LayoutParams lp = (LayoutParams) mSystemIconsSuperContainer
-                .getLayoutParams();
-        int baseId = mHaloButton != null ? mHaloButton.getId() : mSettingsContainer.getId();
+        RelativeLayout.LayoutParams lp = (LayoutParams) mSystemIconsSuperContainer.getLayoutParams();
         int rule = mExpanded
-                ? baseId
+                ? mSettingsContainer.getId()
                 : mMultiUserSwitch.getId();
-        int taskManager = mShowTaskManager && mExpanded
-                ? mTaskManagerButton.getId() : rule;
-        if (taskManager != lp.getRules()[RelativeLayout.START_OF]) {
-            lp.addRule(RelativeLayout.START_OF, taskManager);
+        if (rule != lp.getRules()[RelativeLayout.START_OF]) {
+            lp.addRule(RelativeLayout.START_OF, rule);
             mSystemIconsSuperContainer.setLayoutParams(lp);
         }
     }
 
     private void updateListeners() {
         if (mListening) {
-            mSettingsObserver.observe();
+            TunerService.get(getContext()).addTunable(this,
+                    "cmsystem:" + CMSettings.System.STATUS_BAR_SHOW_WEATHER);
+            mBatteryController.addStateChangedCallback(this);
             mNextAlarmController.addStateChangedCallback(this);
             mWeatherController.addCallback(this);
         } else {
+            mBatteryController.removeStateChangedCallback(this);
             mNextAlarmController.removeStateChangedCallback(this);
             mWeatherController.removeCallback(this);
-            mSettingsObserver.unobserve();
+            TunerService.get(getContext()).removeTunable(this);
         }
     }
 
@@ -614,6 +444,17 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
     }
 
     @Override
+    public void onBatteryLevelChanged(int level, boolean pluggedIn, boolean charging) {
+        String percentage = NumberFormat.getPercentInstance().format((double) level / 100.0);
+        mBatteryLevel.setText(percentage);
+    }
+
+    @Override
+    public void onPowerSaveChanged(boolean isPowerSave) {
+        // could not care less
+    }
+
+    @Override
     public void onNextAlarmChanged(AlarmManager.AlarmClockInfo nextAlarm) {
         mNextAlarm = nextAlarm;
         if (nextAlarm != null) {
@@ -626,12 +467,12 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
 
     @Override
     public void onWeatherChanged(WeatherController.WeatherInfo info) {
-        if (info.temp == null || info.condition == null) {
+        if (Double.isNaN(info.temp) || info.condition == null) {
             mWeatherLine1.setText(null);
         } else {
             mWeatherLine1.setText(mContext.getString(
                     R.string.status_bar_expanded_header_weather_format,
-                    info.temp,
+                    WeatherUtils.formatTemperature(info.temp, info.tempUnit),
                     info.condition));
         }
         mWeatherLine2.setText(info.city);
@@ -680,27 +521,14 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         }
         mCurrentT = t;
         float height = mCollapsedHeight + t * (mExpandedHeight - mCollapsedHeight);
-        if (height != mLastHeight) {
-            if (height < mCollapsedHeight) {
-                height = mCollapsedHeight;
-            }
-            if (height > mExpandedHeight) {
-                height = mExpandedHeight;
-            }
-            final float heightFinal = height;
-            setClipping(heightFinal);
-
-            post(new Runnable() {
-                 public void run() {
-                    RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBackgroundImage.getLayoutParams();
-                    params.height = (int)heightFinal;
-                    mBackgroundImage.setLayoutParams(params);
-                }
-            });
-
-            updateLayoutValues(t);
-            mLastHeight = heightFinal;
+        if (height < mCollapsedHeight) {
+            height = mCollapsedHeight;
         }
+        if (height > mExpandedHeight) {
+            height = mExpandedHeight;
+        }
+        setClipping(height);
+        updateLayoutValues(t);
     }
 
     private void updateLayoutValues(float t) {
@@ -717,31 +545,37 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         invalidateOutline();
     }
 
-    private UserInfoController.OnUserInfoChangedListener mUserInfoChangedListener =
-            new UserInfoController.OnUserInfoChangedListener() {
-        @Override
-        public void onUserInfoChanged(String name, Drawable picture) {
-            mMultiUserAvatar.setImageDrawable(picture);
-        }
-    };
-
     public void setUserInfoController(UserInfoController userInfoController) {
-        mUserInfoController = userInfoController;
-        userInfoController.addListener(mUserInfoChangedListener);
-        if (mMultiUserSwitch != null) {
-            mMultiUserSwitch.setUserInfoController(mUserInfoController);
-        }
+        userInfoController.addListener(new UserInfoController.OnUserInfoChangedListener() {
+            @Override
+            public void onUserInfoChanged(String name, Drawable picture) {
+                mMultiUserAvatar.setImageDrawable(picture);
+            }
+        });
+    }
+
+    @Override
+    public void setCallback(Callback qsPanelCallback) {
     }
 
     @Override
     public void onClick(View v) {
         if (v == mSettingsButton) {
             if (mSettingsButton.isTunerClick()) {
-                mSettingsButton.consumeClick();
-                mQSPanel.getHost().setEditing(!mQSPanel.getHost().isEditing());
-            } else {
-                startSettingsActivity();
+                if (TunerService.isTunerEnabled(mContext)) {
+                    TunerService.showResetRequest(mContext, new Runnable() {
+                        @Override
+                        public void run() {
+                            // Relaunch settings so that the tuner disappears.
+                            startSettingsActivity();
+                        }
+                    });
+                } else {
+                    Toast.makeText(getContext(), R.string.tuner_toast, Toast.LENGTH_LONG).show();
+                    TunerService.setTunerEnabled(mContext, true);
+                }
             }
+            startSettingsActivity();
         } else if (v == mSystemIconsSuperContainer) {
             startBatteryActivity();
         } else if (v == mAlarmStatus && mNextAlarm != null) {
@@ -755,40 +589,7 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
             startDateActivity();
         } else if (v == mWeatherContainer) {
             startForecastActivity();
-        } else if (v == mHaloButton) {
-            toggleHalo();
         }
-    }
-
-    @Override
-    public boolean onLongClick(View v) {
-        vibrateheader(20);
-        if (v == mSystemIconsSuperContainer) {
-            startBatteryLongClickActivity();
-        } else if (v == mClock) {
-            startClockLongClickActivity();
-        } else if (v == mDateGroup) {
-            startDateLongClickActivity();
-        } else if (v == mWeatherContainer) {
-            startForecastLongClickActivity();
-        } else if (v == mMultiUserSwitch) {
-            startUserLongClickActivity();
-        } else if (v == mTaskManagerButton) {
-            startTaskManagerLongClickActivity();
-        } else if (v == mHaloButton) {
-            startHaloSettingsActivity();
-        } else if (v == this) {
-            startThemeHeadersActivity();
-        }
-        vibrateheader(20);
-        return false;
-    }
-
-    private void startThemeHeadersActivity() {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.setClassName("org.cyanogenmod.theme.chooser", "org.cyanogenmod.theme.chooser.ChooserActivity");
-        intent.putExtra("component_filter", "mods_statusbar_headers");
-        mActivityStarter.startActivity(intent, true);
     }
 
     private void startSettingsActivity() {
@@ -801,27 +602,8 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
                 true /* dismissShade */);
     }
 
-    private void startBatteryLongClickActivity() {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.setClassName("com.android.settings",
-            "com.android.settings.Settings$BatterySaverSettingsActivity");
-        mActivityStarter.startActivity(intent, true /* dismissShade */);
-    }
-
-    private void startUserLongClickActivity() {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.setClassName("com.android.settings",
-            "com.android.settings.Settings$UserSettingsActivity");
-        mActivityStarter.startActivity(intent, true /* dismissShade */);
-    }
-
     private void startClockActivity() {
         mActivityStarter.startActivity(new Intent(AlarmClock.ACTION_SHOW_ALARMS),
-                true /* dismissShade */);
-    }
-
-    private void startClockLongClickActivity() {
-        mActivityStarter.startActivity(new Intent(AlarmClock.ACTION_SET_ALARM),
                 true /* dismissShade */);
     }
 
@@ -833,12 +615,6 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         mActivityStarter.startActivity(intent, true /* dismissShade */);
     }
 
-    private void startDateLongClickActivity() {
-        Intent intent = new Intent(Intent.ACTION_INSERT);
-            intent.setData(Events.CONTENT_URI);
-        mActivityStarter.startActivity(intent, true /* dismissShade */);
-    }
-
     private void startForecastActivity() {
         Intent intent = new Intent(Intent.ACTION_MAIN);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -846,22 +622,7 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         mActivityStarter.startActivity(intent, true /* dismissShade */);
     }
 
-    private void startForecastLongClickActivity() {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.setClassName("com.cyanogenmod.lockclock",
-            "com.cyanogenmod.lockclock.preference.Preferences");
-        mActivityStarter.startActivity(intent, true /* dismissShade */);
-    }
-
-
-    private void startTaskManagerLongClickActivity() {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.setClassName("com.android.settings",
-            "com.android.settings.Settings$RunningServicesActivity");
-        mActivityStarter.startActivity(intent, true /* dismissShade */);
-    }
-
-     public void setQSPanel(QSDragPanel qsp) {
+    public void setQSPanel(QSPanel qsp) {
         mQSPanel = qsp;
         if (mQSPanel != null) {
             mQSPanel.setCallback(mQsPanelCallback);
@@ -917,15 +678,6 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         target.settingsTranslation = mExpanded
                 ? 0
                 : mMultiUserSwitch.getLeft() - mSettingsContainer.getLeft();
-        target.haloButtonAlpha = getAlphaForVisibility(mHaloButton);
-        target.haloButtonTranslation = mExpanded
-                ? 0
-                : mSettingsContainer.getLeft() - mHaloButton.getLeft();
-        target.taskManagerAlpha = getAlphaForVisibility(mTaskManagerButton);
-        target.taskManagerTranslation = mExpanded
-                ? 0
-                : (mShowhaloButton ? mHaloButton.getLeft()
-                : mSettingsContainer.getLeft()) - mTaskManagerButton.getLeft();
         target.signalClusterAlpha = mSignalClusterDetached ? 0f : 1f;
         target.settingsRotation = !mExpanded ? 90f : 0f;
     }
@@ -983,12 +735,6 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
             mSettingsContainer.setTranslationX(values.settingsTranslation);
             mSettingsButton.setRotation(values.settingsRotation);
         }
-        mTaskManagerButton.setTranslationY(mSystemIconsSuperContainer.getTranslationY());
-        mTaskManagerButton.setTranslationX(values.taskManagerTranslation);
-        mTaskManagerButton.setRotation(values.settingsRotation);
-        mHaloButton.setTranslationY(mSystemIconsSuperContainer.getTranslationY());
-        mHaloButton.setTranslationX(values.haloButtonTranslation);
-        mHaloButton.setRotation(values.settingsRotation);
         applyAlpha(mEmergencyCallsOnly, values.emergencyCallsOnlyAlpha);
         if (!mShowingDetail && !mDetailTransitioning) {
             // Otherwise it needs to stay invisible
@@ -997,64 +743,15 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         applyAlpha(mDateCollapsed, values.dateCollapsedAlpha);
         applyAlpha(mDateExpanded, values.dateExpandedAlpha);
         applyAlpha(mBatteryLevel, values.batteryLevelAlpha);
-        if (mDockBatteryLevel != null) {
-            applyAlpha(mDockBatteryLevel, values.batteryLevelAlpha);
-        }
         applyAlpha(mSettingsContainer, values.settingsAlpha);
-        applyAlpha(mTaskManagerButton, values.settingsAlpha);
         applyAlpha(mWeatherLine1, values.settingsAlpha);
         applyAlpha(mWeatherLine2, values.settingsAlpha);
-        applyAlpha(mHaloButton, values.haloButtonAlpha);
         applyAlpha(mSignalCluster, values.signalClusterAlpha);
         if (!mExpanded) {
             mTime.setScaleX(1f);
             mTime.setScaleY(1f);
         }
         updateAmPmTranslation();
-    }
-
-    public void setEditing(boolean editing) {
-        mEditing = editing;
-        if (editing && mEditingDetailAdapter == null) {
-            mEditingDetailAdapter = new QSTile.DetailAdapter() {
-                @Override
-                public int getTitle() {
-                    return R.string.quick_settings_edit_label;
-                }
-
-                @Override
-                public Boolean getToggleState() {
-                    return null;
-                }
-
-                @Override
-                public View createDetailView(Context context, View convertView, ViewGroup parent) {
-                    return null;
-                }
-
-                @Override
-                public Intent getSettingsIntent() {
-                    return null;
-                }
-
-                @Override
-                public StatusBarPanelCustomTile getCustomTile() {
-                    return null;
-                }
-
-                @Override
-                public void setToggleState(boolean state) {
-
-                }
-
-                @Override
-                public int getMetricsCategory() {
-                    return CMMetricsLogger.DONT_LOG;
-                }
-            };
-        }
-        mQsPanelCallback.onShowingDetail(mEditing ? mEditingDetailAdapter : null);
-        updateEverything();
     }
 
     /**
@@ -1076,13 +773,8 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         float batteryX;
         float batteryY;
         float batteryLevelAlpha;
-        float batteryLevelExpandedAlpha;
-        float taskManagerAlpha;
-        float taskManagerTranslation;
         float settingsAlpha;
         float settingsTranslation;
-        float haloButtonAlpha;
-        float haloButtonTranslation;
         float signalClusterAlpha;
         float settingsRotation;
         float weatherY;
@@ -1096,11 +788,8 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
             avatarY = v1.avatarY * (1 - t) + v2.avatarY * t;
             batteryX = v1.batteryX * (1 - t) + v2.batteryX * t;
             batteryY = v1.batteryY * (1 - t) + v2.batteryY * t;
-            taskManagerTranslation =
-                    v1.taskManagerTranslation * (1 - t) + v2.taskManagerTranslation * t;
             settingsTranslation = v1.settingsTranslation * (1 - t) + v2.settingsTranslation * t;
             weatherY = v1.weatherY * (1 - t) + v2.weatherY * t;
-            haloButtonTranslation = v1.haloButtonTranslation * (1 - t) + v2.haloButtonTranslation * t;
 
             float t1 = Math.max(0, t - 0.5f) * 2;
             settingsRotation = v1.settingsRotation * (1 - t1) + v2.settingsRotation * t1;
@@ -1112,14 +801,10 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
 
             float t3 = Math.max(0, t - 0.7f) / 0.3f;
             batteryLevelAlpha = v1.batteryLevelAlpha * (1 - t3) + v2.batteryLevelAlpha * t3;
-            taskManagerAlpha = v1.taskManagerAlpha * (1 - t3) + v2.taskManagerAlpha * t3;
             settingsAlpha = v1.settingsAlpha * (1 - t3) + v2.settingsAlpha * t3;
-            haloButtonAlpha = v1.haloButtonAlpha * (1 - t3) + v2.haloButtonAlpha * t3;
             dateExpandedAlpha = v1.dateExpandedAlpha * (1 - t3) + v2.dateExpandedAlpha * t3;
             dateCollapsedAlpha = v1.dateCollapsedAlpha * (1 - t3) + v2.dateCollapsedAlpha * t3;
             alarmStatusAlpha = v1.alarmStatusAlpha * (1 - t3) + v2.alarmStatusAlpha * t3;
-            batteryLevelExpandedAlpha =
-                    v1.batteryLevelExpandedAlpha * (1 - t3) + v2.batteryLevelExpandedAlpha * t3;
         }
     }
 
@@ -1137,12 +822,12 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         }
 
         @Override
-        public void onShowingDetail(final QSTile.DetailAdapter detail) {
+        public void onShowingDetail(final DetailAdapter detail, int x, int y) {
             mDetailTransitioning = true;
             post(new Runnable() {
                 @Override
                 public void run() {
-                    handleShowingDetail(mEditing && detail == null ? mEditingDetailAdapter : detail);
+                    handleShowingDetail(detail);
                 }
             });
         }
@@ -1182,29 +867,17 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
                 transition(mWeatherContainer, !showingDetail);
             }
             if (mAlarmShowing) {
-                transition(mAlarmStatus, !showingDetail && !mDetailTransitioning);
+                transition(mAlarmStatus, !showingDetail);
             }
             transition(mQsDetailHeader, showingDetail);
             mShowingDetail = showingDetail;
             if (showingDetail) {
-                mQsDetailHeaderTitle.setText(QSTile.getDetailAdapterTitle(getContext(), detail));
+                mQsDetailHeaderTitle.setText(detail.getTitle());
                 final Boolean toggleState = detail.getToggleState();
-                if (detail.getTitle() == R.string.quick_settings_edit_label) {
-                    mEditTileDoneText.setVisibility(View.VISIBLE);
+                if (toggleState == null) {
                     mQsDetailHeaderSwitch.setVisibility(INVISIBLE);
-                    mQsDetailHeader.setClickable(true);
-                    mQsDetailHeader.setOnClickListener(new OnClickListener() {
-                        @Override
-                        public void onClick(View v) {
-                            mQSPanel.getHost().setEditing(false);
-                        }
-                    });
-                } else if (toggleState == null) {
-                    mQsDetailHeaderSwitch.setVisibility(INVISIBLE);
-                    mEditTileDoneText.setVisibility(View.GONE);
                     mQsDetailHeader.setClickable(false);
                 } else {
-                    mEditTileDoneText.setVisibility(View.GONE);
                     mQsDetailHeaderSwitch.setVisibility(VISIBLE);
                     mQsDetailHeaderSwitch.setChecked(toggleState);
                     mQsDetailHeader.setClickable(true);
@@ -1245,515 +918,11 @@ public class StatusBarHeaderView extends RelativeLayout implements View.OnClickL
         }
     };
 
-    private void toggleHalo() {
-        Settings.Secure.putInt(mContext.getContentResolver(),
-                Settings.Secure.HALO_ACTIVE, !mHaloActive ? 1 : 0);
-    }
-
-    private void startHaloSettingsActivity() {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.setClassName("com.lordclockan", "com.lordclockan.aicpextras.MainActivity");
-        intent.putExtra("init_fragment", "halo");
-        mActivityStarter.startActivity(intent, true);
-    }
-
-    class SettingsObserver extends UserContentObserver {
-        SettingsObserver(Handler handler) {
-            super(handler);
-        }
-
-        @Override
-        protected void observe() {
-            super.observe();
-
-            ContentResolver resolver = mContext.getContentResolver();
-            resolver.registerContentObserver(CMSettings.System.getUriFor(
-                    CMSettings.System.STATUS_BAR_SHOW_WEATHER), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(CMSettings.System.getUriFor(
-                    CMSettings.System.STATUS_BAR_BATTERY_STYLE), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(CMSettings.System.getUriFor(
-                    CMSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.QS_TRANSPARENT_HEADER), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.STATUS_BAR_HEADER_FONT_STYLE), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.STATUS_BAR_CUSTOM_HEADER_SHADOW), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.STATUS_BAR_CUSTOM_HEADER_TEXT_SHADOW), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.STATUS_BAR_CUSTOM_HEADER_TEXT_SHADOW_COLOR), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.STATUS_BAR_CUSTOM_HEADER), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(Settings.Secure.getUriFor(
-                    Settings.Secure.HALO_ACTIVE), false, this, UserHandle.USER_ALL);
-            update();
-        }
-
-        @Override
-        protected void unobserve() {
-            super.unobserve();
-
-            ContentResolver resolver = mContext.getContentResolver();
-            resolver.unregisterContentObserver(this);
-        }
-
-        @Override
-        public void update() {
-
-            ContentResolver resolver = mContext.getContentResolver();
-            int currentUserId = ActivityManager.getCurrentUser();
-            int batteryStyle = CMSettings.System.getIntForUser(resolver,
-                    CMSettings.System.STATUS_BAR_BATTERY_STYLE, 0, currentUserId);
-            boolean showExpandedBatteryPercentage = CMSettings.System.getIntForUser(resolver,
-                    CMSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT, 0, currentUserId) == 0;
-
-            switch (batteryStyle) {
-                case 4: //BATTERY_METER_GONE
-                case 6: //BATTERY_METER_TEXT
-                    showExpandedBatteryPercentage = false;
-                    break;
-                default:
-                    break;
-            }
-
-            mShowBatteryTextExpanded = showExpandedBatteryPercentage;
-            mShowWeather = CMSettings.System.getInt(
-                    resolver, CMSettings.System.STATUS_BAR_SHOW_WEATHER, 1) == 1;
-
-            mQSHeaderAlpha = Settings.System.getInt(
-                    resolver, Settings.System.QS_TRANSPARENT_HEADER, 255);
-            setQSHeaderAlpha();
-
-            mStatusBarHeaderFontStyle = Settings.System.getIntForUser(resolver,
-                Settings.System.STATUS_BAR_HEADER_FONT_STYLE, FONT_NORMAL,
-                UserHandle.USER_CURRENT);
-            setStatusBarHeaderFontStyle(mStatusBarHeaderFontStyle);
-
-            headerShadow = Settings.System.getIntForUser(resolver,
-                    Settings.System.STATUS_BAR_CUSTOM_HEADER_SHADOW, 0,
-                    UserHandle.USER_CURRENT);
-
-            textShadow = Settings.System.getFloatForUser(resolver,
-                    Settings.System.STATUS_BAR_CUSTOM_HEADER_TEXT_SHADOW, 0,
-                    UserHandle.USER_CURRENT);
-
-            tShadowColor = Settings.System.getIntForUser(resolver,
-                    Settings.System.STATUS_BAR_CUSTOM_HEADER_TEXT_SHADOW_COLOR, 0,
-                    UserHandle.USER_CURRENT);
-
-            customHeader = Settings.System.getIntForUser(resolver,
-                    Settings.System.STATUS_BAR_CUSTOM_HEADER, 0,
-                    UserHandle.USER_CURRENT);
-
-            mShowhaloButton = Settings.Secure.getInt(resolver,
-                    Settings.Secure.HALO_ENABLE, 0) == 1;
-
-            mHaloActive = Settings.Secure.getInt(resolver,
-                    Settings.Secure.HALO_ACTIVE, 0) == 1;
-            mHaloButton.setActivated(mHaloActive);
-
+    @Override
+    public void onTuningChanged(String key, String newValue) {
+        if (key.endsWith(CMSettings.System.STATUS_BAR_SHOW_WEATHER)) {
+            mShowWeather = newValue == null || "1".equals(newValue);
             updateVisibilities();
-            requestCaptureValues();
-        }
-    }
-
-    private void doUpdateStatusBarCustomHeader(final Drawable next, final boolean force) {
-        if (next != null) {
-            if (next != mCurrentBackground) {
-                Log.i(TAG, "Updating status bar header background");
-                mBackgroundImage.setVisibility(View.VISIBLE);
-                setNotificationPanelHeaderBackground(next, force);
-                mCurrentBackground = next;
-                applyHeaderBackgroundShadow();
-            }
-        } else {
-            mCurrentBackground = null;
-            mBackgroundImage.setVisibility(View.GONE);
-        }
-    }
-
-    private void setNotificationPanelHeaderBackground(final Drawable dw, final boolean force) {
-        if (mBackgroundImage.getDrawable() != null && !force) {
-            Drawable[] arrayDrawable = new Drawable[2];
-            arrayDrawable[0] = mBackgroundImage.getDrawable();
-            arrayDrawable[1] = dw;
-
-            TransitionDrawable transitionDrawable = new TransitionDrawable(arrayDrawable);
-            transitionDrawable.setCrossFadeEnabled(true);
-            mBackgroundImage.setImageDrawable(transitionDrawable);
-            transitionDrawable.startTransition(1000);
-        } else {
-            mBackgroundImage.setImageDrawable(dw);
-        }
-        applyHeaderBackgroundShadow();
-    }
-
-    private void applyHeaderBackgroundShadow() {
-        if (customHeader == 1) {
-            ColorDrawable shadow = new ColorDrawable(Color.BLACK);
-            shadow.setAlpha(headerShadow);
-            mBackgroundImage.setForeground(shadow);
-        } else if (customHeader == 0) {
-            ColorDrawable shadow = new ColorDrawable(Color.BLACK);
-            shadow.setAlpha(0);
-            mBackgroundImage.setForeground(shadow);
-        }
-    }
-
-    @Override
-    public void updateHeader(final Drawable headerImage, final boolean force) {
-        post(new Runnable() {
-             public void run() {
-                // TODO we dont need to do this every time but we dont have
-                // an other place to know right now when custom header is enabled
-                doUpdateStatusBarCustomHeader(headerImage, force);
-            }
-        });
-    }
-
-    @Override
-    public void disableHeader() {
-        post(new Runnable() {
-             public void run() {
-                mCurrentBackground = null;
-                mBackgroundImage.setVisibility(View.GONE);
-            }
-        });
-    }
-
-    /**
-     * makes text more readable on light backgrounds
-     */
-    private void applyTextShadow() {
-        mTime.setShadowLayer(textShadow, 0, 0, tShadowColor);
-        mAmPm.setShadowLayer(textShadow, 0, 0, tShadowColor);
-        mDateCollapsed.setShadowLayer(textShadow, 0, 0, tShadowColor);
-        mDateExpanded.setShadowLayer(textShadow, 0, 0, tShadowColor);
-        mBatteryLevel.setShadowLayer(textShadow, 0, 0, tShadowColor);
-        mAlarmStatus.setShadowLayer(textShadow, 0, 0, tShadowColor);
-        mQsDetailHeaderTitle.setShadowLayer(textShadow, 0, 0, tShadowColor);
-        mWeatherLine1.setShadowLayer(textShadow, 0, 0, tShadowColor);
-        mWeatherLine2.setShadowLayer(textShadow, 0, 0, tShadowColor);
-        mEditTileDoneText.setShadowLayer(textShadow, 0, 0, tShadowColor);
-    }
-
-
-    private void setQSHeaderAlpha() {
-        if (Settings.System.getInt(mContext.getContentResolver(),
-                    Settings.System.QS_TRANSPARENT_HEADER, 255) != 255) {
-            if (mHeaderView != null) {
-                 mHeaderView.getBackground().setAlpha(mQSHeaderAlpha);
-            }
-            if (mBackgroundImage != null) {
-                mBackgroundImage.setAlpha(mQSHeaderAlpha);
-            }
-        }
-    }
-
-    private void setStatusBarHeaderFontStyle(int font) {
-        switch (font) {
-            case FONT_NORMAL:
-            default:
-                mTime.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                break;
-            case FONT_ITALIC:
-                mTime.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                mAmPm.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-                break;
-            case FONT_BOLD:
-                mTime.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                mAmPm.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                break;
-            case FONT_BOLD_ITALIC:
-                mTime.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                mAmPm.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
-                break;
-            case FONT_LIGHT:
-                mTime.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                break;
-            case FONT_LIGHT_ITALIC:
-                mTime.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                mAmPm.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-light", Typeface.ITALIC));
-                break;
-            case FONT_THIN:
-                mTime.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-                break;
-            case FONT_THIN_ITALIC:
-                mTime.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                mAmPm.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-thin", Typeface.ITALIC));
-                break;
-            case FONT_CONDENSED:
-                mTime.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-condensed", Typeface.NORMAL));
-                break;
-            case FONT_CONDENSED_ITALIC:
-                mTime.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                mAmPm.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-condensed", Typeface.ITALIC));
-                break;
-            case FONT_CONDENSED_LIGHT:
-                mTime.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.NORMAL));
-                break;
-            case FONT_CONDENSED_LIGHT_ITALIC:
-                mTime.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                mAmPm.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-condensed-light", Typeface.ITALIC));
-                break;
-            case FONT_CONDENSED_BOLD:
-                mTime.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                mAmPm.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
-                break;
-            case FONT_CONDENSED_BOLD_ITALIC:
-                mTime.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                mAmPm.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC));
-                break;
-            case FONT_MEDIUM:
-                mTime.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                break;
-            case FONT_MEDIUM_ITALIC:
-                mTime.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                mAmPm.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
-                break;
-            case FONT_BLACK:
-                mTime.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-                break;
-            case FONT_BLACK_ITALIC:
-                mTime.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                mAmPm.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC));
-                break;
-            case FONT_DANCINGSCRIPT:
-                mTime.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("cursive", Typeface.NORMAL));
-                break;
-            case FONT_DANCINGSCRIPT_BOLD:
-                mTime.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                mAmPm.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                mDateCollapsed.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                mDateExpanded.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                mBatteryLevel.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                mAlarmStatus.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                mWeatherLine1.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                mWeatherLine2.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                mEditTileDoneText.setTypeface(Typeface.create("cursive", Typeface.BOLD));
-                break;
-            case FONT_COMINGSOON:
-                mTime.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("casual", Typeface.NORMAL));
-                break;
-            case FONT_NOTOSERIF:
-                mTime.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                mAmPm.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                mDateCollapsed.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                mDateExpanded.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                mBatteryLevel.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                mAlarmStatus.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                mWeatherLine1.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                mWeatherLine2.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                mEditTileDoneText.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                break;
-            case FONT_NOTOSERIF_ITALIC:
-                mTime.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                mAmPm.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("serif", Typeface.ITALIC));
-                break;
-            case FONT_NOTOSERIF_BOLD:
-                mTime.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                mAmPm.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                mDateCollapsed.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                mDateExpanded.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                mBatteryLevel.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                mAlarmStatus.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                mWeatherLine1.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                mWeatherLine2.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                mEditTileDoneText.setTypeface(Typeface.create("serif", Typeface.BOLD));
-                break;
-            case FONT_NOTOSERIF_BOLD_ITALIC:
-                mTime.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                mAmPm.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                mDateCollapsed.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                mDateExpanded.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                mBatteryLevel.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                mQsDetailHeaderTitle.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                mAlarmStatus.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                mWeatherLine1.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                mWeatherLine2.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                mEditTileDoneText.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
-                break;
         }
     }
 }

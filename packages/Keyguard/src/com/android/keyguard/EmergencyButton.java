@@ -26,12 +26,14 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.telecom.TelecomManager;
+import android.telephony.ServiceState;
 import android.util.AttributeSet;
 import android.util.Slog;
 import android.view.View;
 import android.widget.Button;
 
 import com.android.internal.logging.MetricsLogger;
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.internal.telephony.IccCardConstants.State;
 import com.android.internal.widget.LockPatternUtils;
 
@@ -60,6 +62,11 @@ public class EmergencyButton extends Button {
 
         @Override
         public void onPhoneStateChanged(int phoneState) {
+            updateEmergencyCallButton();
+        }
+
+        @Override
+        public void onServiceStateChanged(int subId, ServiceState state) {
             updateEmergencyCallButton();
         }
     };
@@ -122,12 +129,12 @@ public class EmergencyButton extends Button {
      * Shows the emergency dialer or returns the user to the existing call.
      */
     public void takeEmergencyCallAction() {
-        MetricsLogger.action(mContext, MetricsLogger.ACTION_EMERGENCY_CALL);
+        MetricsLogger.action(mContext, MetricsEvent.ACTION_EMERGENCY_CALL);
         // TODO: implement a shorter timeout once new PowerManager API is ready.
         // should be the equivalent to the old userActivity(EMERGENCY_CALL_TIMEOUT)
         mPowerManager.userActivity(SystemClock.uptimeMillis(), true);
         try {
-            ActivityManagerNative.getDefault().stopLockTaskMode();
+            ActivityManagerNative.getDefault().stopSystemLockTaskMode();
         } catch (RemoteException e) {
             Slog.w(LOG_TAG, "Failed to stop app pinning");
         }
@@ -160,6 +167,11 @@ public class EmergencyButton extends Button {
                 } else {
                     // Only show if there is a secure screen (pin/pattern/SIM pin/SIM puk);
                     visible = mLockPatternUtils.isSecure(KeyguardUpdateMonitor.getCurrentUser());
+                }
+
+                if (mContext.getResources().getBoolean(R.bool.kg_hide_emgcy_btn_when_oos)) {
+                    KeyguardUpdateMonitor monitor = KeyguardUpdateMonitor.getInstance(mContext);
+                    visible = visible && !monitor.isOOS();
                 }
             }
         }

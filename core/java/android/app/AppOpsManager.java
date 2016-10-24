@@ -1,8 +1,7 @@
 /*
- * Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
- * Not a Contribution.
- *
  * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (c) 2013-2016, The CyanogenMod Project
+ * Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,7 +72,7 @@ public class AppOpsManager {
      * will do this for you).
      */
 
-    /** {@hide */
+    /** {@hide} */
     public static final String ACTION_SU_SESSION_CHANGED =
             "android.intent.action.SU_SESSION_CHANGED";
 
@@ -120,9 +119,8 @@ public class AppOpsManager {
 
     // when adding one of these:
     //  - increment _NUM_OP
-    //  - add rows to sOpToSwitch, sOpToString, sOpNames, sOpPerms, sOpDefaultMode, sOpDefaultStrictMode,
-    //    sOpToOpString, sOpStrictMode.
-    //  - add descriptive strings to frameworks/base/core/res/res/values/config.xml
+    //  - add rows to sOpToSwitch, sOpToString, sOpNames, sOpToPerms, sOpDefault,
+    //    sOpDefaultStrictMode, sOpToOpString, sOpStrictMode.
     //  - add descriptive strings to Settings/res/values/arrays.xml
     //  - add the op to the appropriate template in AppOpsState.OpsTemplate (settings app)
 
@@ -254,20 +252,22 @@ public class AppOpsManager {
     public static final int OP_TURN_SCREEN_ON = 61;
     /** @hide Get device accounts. */
     public static final int OP_GET_ACCOUNTS = 62;
+    /** @hide Control whether an application is allowed to run in the background. */
+    public static final int OP_RUN_IN_BACKGROUND = 63;
     /** @hide Wifi state change **/
-    public static final int OP_WIFI_CHANGE = 63;
+    public static final int OP_CHANGE_WIFI_STATE = 64;
     /** @hide */
-    public static final int OP_BLUETOOTH_CHANGE = 64;
+    public static final int OP_BLUETOOTH_CHANGE = 65;
     /** @hide */
-    public static final int OP_BOOT_COMPLETED = 65;
+    public static final int OP_BOOT_COMPLETED = 66;
     /** @hide */
-    public static final int OP_NFC_CHANGE = 66;
+    public static final int OP_NFC_CHANGE = 67;
     /** @hide */
-    public static final int OP_DATA_CONNECT_CHANGE = 67;
+    public static final int OP_DATA_CONNECT_CHANGE = 68;
     /** @hide */
-    public static final int OP_SU = 68;
+    public static final int OP_SU = 69;
     /** @hide */
-    public static final int _NUM_OP = 69;
+    public static final int _NUM_OP = 70;
 
     /** Access to coarse location information. */
     public static final String OPSTR_COARSE_LOCATION = "android:coarse_location";
@@ -379,6 +379,43 @@ public class AppOpsManager {
     private static final String OPSTR_SU =
             "android:su";
 
+    private static final int[] RUNTIME_PERMISSIONS_OPS = {
+            // Contacts
+            OP_READ_CONTACTS,
+            OP_WRITE_CONTACTS,
+            OP_GET_ACCOUNTS,
+            // Calendar
+            OP_READ_CALENDAR,
+            OP_WRITE_CALENDAR,
+            // SMS
+            OP_SEND_SMS,
+            OP_RECEIVE_SMS,
+            OP_READ_SMS,
+            OP_RECEIVE_WAP_PUSH,
+            OP_RECEIVE_MMS,
+            OP_READ_CELL_BROADCASTS,
+            // Storage
+            OP_READ_EXTERNAL_STORAGE,
+            OP_WRITE_EXTERNAL_STORAGE,
+            // Location
+            OP_COARSE_LOCATION,
+            OP_FINE_LOCATION,
+            // Phone
+            OP_READ_PHONE_STATE,
+            OP_CALL_PHONE,
+            OP_READ_CALL_LOG,
+            OP_WRITE_CALL_LOG,
+            OP_ADD_VOICEMAIL,
+            OP_USE_SIP,
+            OP_PROCESS_OUTGOING_CALLS,
+            // Microphone
+            OP_RECORD_AUDIO,
+            // Camera
+            OP_CAMERA,
+            // Body sensors
+            OP_BODY_SENSORS
+    };
+
     /**
      * This maps each operation to the operation that serves as the
      * switch to determine whether it is allowed.  Generally this is
@@ -389,8 +426,8 @@ public class AppOpsManager {
      */
     private static int[] sOpToSwitch = new int[] {
             OP_COARSE_LOCATION,
-            OP_COARSE_LOCATION,
-            OP_COARSE_LOCATION,
+            OP_FINE_LOCATION,
+            OP_GPS,
             OP_VIBRATE,
             OP_READ_CONTACTS,
             OP_WRITE_CONTACTS,
@@ -429,8 +466,8 @@ public class AppOpsManager {
             OP_AUDIO_NOTIFICATION_VOLUME,
             OP_AUDIO_BLUETOOTH_VOLUME,
             OP_WAKE_LOCK,
-            OP_COARSE_LOCATION,
-            OP_COARSE_LOCATION,
+            OP_FINE_LOCATION,
+            OP_FINE_LOCATION,
             OP_GET_USAGE_STATS,
             OP_MUTE_MICROPHONE,
             OP_TOAST_WINDOW,
@@ -451,7 +488,8 @@ public class AppOpsManager {
             OP_WRITE_EXTERNAL_STORAGE,
             OP_TURN_SCREEN_ON,
             OP_GET_ACCOUNTS,
-            OP_WIFI_CHANGE,
+            OP_RUN_IN_BACKGROUND,
+            OP_CHANGE_WIFI_STATE,
             OP_BLUETOOTH_CHANGE,
             OP_BOOT_COMPLETED,
             OP_NFC_CHANGE,
@@ -527,6 +565,7 @@ public class AppOpsManager {
             OPSTR_WRITE_EXTERNAL_STORAGE,
             null,
             OPSTR_GET_ACCOUNTS,
+            null,
             OPSTR_WIFI_CHANGE,
             OPSTR_BLUETOOTH_CHANGE,
             OPSTR_BOOT_COMPLETED,
@@ -603,6 +642,7 @@ public class AppOpsManager {
             "WRITE_EXTERNAL_STORAGE",
             "TURN_ON_SCREEN",
             "GET_ACCOUNTS",
+            "RUN_IN_BACKGROUND",
             "WIFI_CHANGE",
             "BLUETOOTH_CHANGE",
             "BOOT_COMPLETED",
@@ -679,6 +719,7 @@ public class AppOpsManager {
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
             null, // no permission for turning the screen on
             Manifest.permission.GET_ACCOUNTS,
+            null, // no permission for running in background
             Manifest.permission.CHANGE_WIFI_STATE,
             null,
             Manifest.permission.RECEIVE_BOOT_COMPLETED,
@@ -719,7 +760,7 @@ public class AppOpsManager {
             null, //WRITE_SETTINGS
             UserManager.DISALLOW_CREATE_WINDOWS, //SYSTEM_ALERT_WINDOW
             null, //ACCESS_NOTIFICATIONS
-            null, //CAMERA
+            UserManager.DISALLOW_CAMERA, //CAMERA
             UserManager.DISALLOW_RECORD_AUDIO, //RECORD_AUDIO
             null, //PLAY_AUDIO
             null, //READ_CLIPBOARD
@@ -740,7 +781,7 @@ public class AppOpsManager {
             UserManager.DISALLOW_UNMUTE_MICROPHONE, // MUTE_MICROPHONE
             UserManager.DISALLOW_CREATE_WINDOWS, // TOAST_WINDOW
             null, //PROJECT_MEDIA
-            UserManager.DISALLOW_CONFIG_VPN, // ACTIVATE_VPN
+            null, // ACTIVATE_VPN
             UserManager.DISALLOW_WALLPAPER, // WRITE_WALLPAPER
             null, // ASSIST_STRUCTURE
             null, // ASSIST_SCREENSHOT
@@ -756,6 +797,7 @@ public class AppOpsManager {
             null, // WRITE_EXTERNAL_STORAGE
             null, // TURN_ON_SCREEN
             null, // GET_ACCOUNTS
+            null, // RUN_IN_BACKGROUND
             null, //WIFI_CHANGE
             null, //BLUETOOTH_CHANGE
             null, //BOOT_COMPLETED
@@ -769,8 +811,8 @@ public class AppOpsManager {
      * (and system ui) to bypass the user restriction when active.
      */
     private static boolean[] sOpAllowSystemRestrictionBypass = new boolean[] {
-            false, //COARSE_LOCATION
-            false, //FINE_LOCATION
+            true, //COARSE_LOCATION
+            true, //FINE_LOCATION
             false, //GPS
             false, //VIBRATE
             false, //READ_CONTACTS
@@ -832,6 +874,7 @@ public class AppOpsManager {
             false, // WRITE_EXTERNAL_STORAGE
             false, // TURN_ON_SCREEN
             false, // GET_ACCOUNTS
+            false, // RUN_IN_BACKGROUND
             true, // WIFI_CHANGE
             true, // BLUETOOTH_CHANGE
             true, // BOOT_COMPLETED
@@ -907,7 +950,8 @@ public class AppOpsManager {
             AppOpsManager.MODE_ALLOWED,
             AppOpsManager.MODE_ALLOWED,  // OP_TURN_ON_SCREEN
             AppOpsManager.MODE_ALLOWED,
-            AppOpsManager.MODE_ALLOWED, // OP_WIFI_CHANGE
+            AppOpsManager.MODE_ALLOWED,  // OP_RUN_IN_BACKGROUND
+            AppOpsManager.MODE_ALLOWED, // OP_CHANGE_WIFI_STATE
             AppOpsManager.MODE_ALLOWED,     // OP_BLUETOOTH_CHANGE
             AppOpsManager.MODE_ALLOWED, // OP_BOOT_COMPLETED
             AppOpsManager.MODE_ALLOWED, // OP_NFC_CHANGE
@@ -983,7 +1027,8 @@ public class AppOpsManager {
             AppOpsManager.MODE_ALLOWED, // OP_WRITE_EXTERNAL_STORAGE
             AppOpsManager.MODE_ALLOWED, // OP_TURN_ON_SCREEN
             AppOpsManager.MODE_ALLOWED, // OP_GET_ACCOUNTS
-            AppOpsManager.MODE_ASK,     // OP_WIFI_CHANGE
+            AppOpsManager.MODE_ALLOWED, // MODE_RUN_IN_BACKGROUND
+            AppOpsManager.MODE_ASK,     // OP_CHANGE_WIFI_STATE
             AppOpsManager.MODE_ASK,     // OP_BLUETOOTH_CHANGE
             AppOpsManager.MODE_ALLOWED, // OP_BOOT_COMPLETED
             AppOpsManager.MODE_ASK,     // OP_NFC_CHANGE
@@ -1058,7 +1103,8 @@ public class AppOpsManager {
         true,     // WRITE_EXTERNAL_STORAGE
         false,    // TURN_ON_SCREEN
         false,    // GET_ACCOUNTS
-        true,     // OP_WIFI_CHANGE
+        false,    // RUN_IN_BACKGROUND
+        true,     // OP_CHANGE_WIFI_STATE
         true,     // OP_BLUETOOTH_CHANGE
         false,    // OP_BOOT_COMPLETED
         true,     // OP_NFC_CHANGE
@@ -1137,7 +1183,8 @@ public class AppOpsManager {
             false,
             false,
             false,
-            false,     // OP_WIFI_CHANGE
+            false,
+            false,     // OP_CHANGE_WIFI_STATE
             false,     // OP_BLUETOOTH_CHANGE
             false,     // OP_BOOT_COMPLETED
             false,     // OP_NFC_CHANGE
@@ -1153,7 +1200,7 @@ public class AppOpsManager {
     /**
      * Mapping from a permission to the corresponding app op.
      */
-    private static HashMap<String, Integer> sPermToOp = new HashMap<>();
+    private static HashMap<String, Integer> sRuntimePermToOp = new HashMap<>();
 
     private static HashMap<String, Integer> sNameToOp = new HashMap<String, Integer>();
 
@@ -1203,9 +1250,9 @@ public class AppOpsManager {
                 sOpStrToOp.put(sOpToString[i], i);
             }
         }
-        for (int i=0; i<_NUM_OP; i++) {
-            if (sOpPerms[i] != null) {
-                sPermToOp.put(sOpPerms[i], i);
+        for (int op : RUNTIME_PERMISSIONS_OPS) {
+            if (sOpPerms[op] != null) {
+                sRuntimePermToOp.put(sOpPerms[op], op);
             }
         }
         for (int i=0; i<_NUM_OP; i++) {
@@ -1269,10 +1316,12 @@ public class AppOpsManager {
 
     /**
      * Retrieve the app op code for a permission, or null if there is not one.
+     * This API is intended to be used for mapping runtime permissions to the
+     * corresponding app op.
      * @hide
      */
     public static int permissionToOpCode(String permission) {
-        Integer boxedOpCode = sPermToOp.get(permission);
+        Integer boxedOpCode = sRuntimePermToOp.get(permission);
         return boxedOpCode != null ? boxedOpCode : OP_NONE;
     }
 
@@ -1507,8 +1556,8 @@ public class AppOpsManager {
         try {
             return mService.getPackagesForOps(ops);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return null;
     }
 
     /**
@@ -1523,15 +1572,65 @@ public class AppOpsManager {
         try {
             return mService.getOpsForPackage(uid, packageName, ops);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return null;
     }
 
-    /** @hide */
+    /**
+     * Sets given app op in the specified mode for app ops in the UID.
+     * This applies to all apps currently in the UID or installed in
+     * this UID in the future.
+     *
+     * @param code The app op.
+     * @param uid The UID for which to set the app.
+     * @param mode The app op mode to set.
+     * @hide
+     */
     public void setUidMode(int code, int uid, int mode) {
         try {
             mService.setUidMode(code, uid, mode);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Sets given app op in the specified mode for app ops in the UID.
+     * This applies to all apps currently in the UID or installed in
+     * this UID in the future.
+     *
+     * @param appOp The app op.
+     * @param uid The UID for which to set the app.
+     * @param mode The app op mode to set.
+     * @hide
+     */
+    @SystemApi
+    public void setUidMode(String appOp, int uid, int mode) {
+        try {
+            mService.setUidMode(AppOpsManager.strOpToOp(appOp), uid, mode);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /** @hide */
+    public void setUserRestriction(int code, boolean restricted, IBinder token) {
+        setUserRestriction(code, restricted, token, /*exceptionPackages*/null);
+    }
+
+    /** @hide */
+    public void setUserRestriction(int code, boolean restricted, IBinder token,
+            String[] exceptionPackages) {
+        setUserRestrictionForUser(code, restricted, token, exceptionPackages, mContext.getUserId());
+    }
+
+    /** @hide */
+    public void setUserRestrictionForUser(int code, boolean restricted, IBinder token,
+            String[] exceptionPackages, int userId) {
+        try {
+            mService.setUserRestriction(code, restricted, token, userId, exceptionPackages);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -1540,6 +1639,7 @@ public class AppOpsManager {
         try {
             mService.setMode(code, uid, packageName, mode);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -1560,6 +1660,7 @@ public class AppOpsManager {
             final int uid = Binder.getCallingUid();
             mService.setAudioRestriction(code, usage, uid, mode, exceptionPackages);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -1568,6 +1669,7 @@ public class AppOpsManager {
         try {
             mService.resetAllModes(UserHandle.myUserId(), null);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -1575,12 +1677,14 @@ public class AppOpsManager {
      * Gets the app op name associated with a given permission.
      * The app op name is one of the public constants defined
      * in this class such as {@link #OPSTR_COARSE_LOCATION}.
+     * This API is intended to be used for mapping runtime
+     * permissions to the corresponding app op.
      *
      * @param permission The permission.
      * @return The app op associated with the permission or null.
      */
     public static String permissionToOp(String permission) {
-        final Integer opCode = sPermToOp.get(permission);
+        final Integer opCode = sRuntimePermToOp.get(permission);
         if (opCode == null) {
             return null;
         }
@@ -1610,7 +1714,7 @@ public class AppOpsManager {
             IAppOpsCallback cb = mModeWatchers.get(callback);
             if (cb == null) {
                 cb = new IAppOpsCallback.Stub() {
-                    public void opChanged(int op, String packageName) {
+                    public void opChanged(int op, int uid, String packageName) {
                         if (callback instanceof OnOpChangedInternalListener) {
                             ((OnOpChangedInternalListener)callback).onOpChanged(op, packageName);
                         }
@@ -1624,6 +1728,7 @@ public class AppOpsManager {
             try {
                 mService.startWatchingMode(op, packageName, cb);
             } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
             }
         }
     }
@@ -1639,6 +1744,7 @@ public class AppOpsManager {
                 try {
                     mService.stopWatchingMode(cb);
                 } catch (RemoteException e) {
+                    throw e.rethrowFromSystemServer();
                 }
             }
         }
@@ -1803,8 +1909,8 @@ public class AppOpsManager {
             }
             return mode;
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return MODE_IGNORED;
     }
 
     /**
@@ -1816,8 +1922,8 @@ public class AppOpsManager {
         try {
             return mService.checkOperation(op, uid, packageName);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return MODE_ERRORED;
     }
 
     /**
@@ -1833,7 +1939,7 @@ public class AppOpsManager {
                         "Package " + packageName + " does not belong to " + uid);
             }
         } catch (RemoteException e) {
-            throw new SecurityException("Unable to verify package ownership", e);
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -1849,8 +1955,8 @@ public class AppOpsManager {
             }
             return mode;
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return MODE_IGNORED;
     }
 
     /**
@@ -1862,8 +1968,8 @@ public class AppOpsManager {
         try {
             return mService.checkAudioOperation(op, stream, uid, packageName);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return MODE_ERRORED;
     }
 
     /**
@@ -1889,8 +1995,8 @@ public class AppOpsManager {
             }
             return mode;
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return MODE_IGNORED;
     }
 
     /**
@@ -1932,8 +2038,8 @@ public class AppOpsManager {
             return mService.noteProxyOperation(op, mContext.getOpPackageName(),
                     Binder.getCallingUid(), proxiedPackageName);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return MODE_ERRORED;
     }
 
     /**
@@ -1945,8 +2051,8 @@ public class AppOpsManager {
         try {
             return mService.noteOperation(op, uid, packageName);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return MODE_ERRORED;
     }
 
     /** @hide */
@@ -1963,7 +2069,7 @@ public class AppOpsManager {
             try {
                 sToken = service.getToken(new Binder());
             } catch (RemoteException e) {
-                // System is dead, whatevs.
+                throw e.rethrowFromSystemServer();
             }
             return sToken;
         }
@@ -1994,8 +2100,8 @@ public class AppOpsManager {
             }
             return mode;
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return MODE_IGNORED;
     }
 
     /**
@@ -2007,8 +2113,8 @@ public class AppOpsManager {
         try {
             return mService.startOperation(getToken(mService), op, uid, packageName);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
-        return MODE_ERRORED;
     }
 
     /** @hide */
@@ -2027,6 +2133,7 @@ public class AppOpsManager {
         try {
             mService.finishOperation(getToken(mService), op, uid, packageName);
         } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 

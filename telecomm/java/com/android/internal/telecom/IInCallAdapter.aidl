@@ -16,6 +16,7 @@
 
 package com.android.internal.telecom;
 
+import android.os.Bundle;
 import android.telecom.PhoneAccountHandle;
 
 /**
@@ -61,10 +62,11 @@ oneway interface IInCallAdapter {
 
     void turnOffProximitySensor(boolean screenOnImmediately);
 
-    void switchToOtherActiveSub(String subId);
+    void pullExternalCall(String callId);
 
-    void transferCall(String callId);
+    void sendCallEvent(String callId, String event, in Bundle extras);
 
-    void answerCallWithCallWaitingResponse(String callId, int videoState, int
-        callWaitingResponseType);
+    void putExtras(String callId, in Bundle extras);
+
+    void removeExtras(String callId, in List<String> keys);
 }

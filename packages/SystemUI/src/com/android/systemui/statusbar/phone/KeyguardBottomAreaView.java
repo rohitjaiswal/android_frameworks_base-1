@@ -29,10 +29,14 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
-import android.graphics.PixelFormat;
+import android.hardware.fingerprint.FingerprintManager;
+import android.content.res.Resources;
+import android.graphics.Bitmap;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.hardware.fingerprint.FingerprintManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -46,14 +50,9 @@ import android.telecom.TelecomManager;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.TypedValue;
-import android.view.Gravity;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowManager;
 import android.view.accessibility.AccessibilityNodeInfo;
-import android.view.animation.AnimationUtils;
-import android.view.animation.Interpolator;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 import com.android.internal.widget.LockPatternUtils;
@@ -61,6 +60,7 @@ import com.android.keyguard.KeyguardUpdateMonitor;
 import com.android.keyguard.KeyguardUpdateMonitorCallback;
 import com.android.systemui.EventLogConstants;
 import com.android.systemui.EventLogTags;
+import com.android.systemui.Interpolators;
 import com.android.systemui.R;
 import com.android.systemui.assist.AssistManager;
 import com.android.systemui.cm.LockscreenShortcutsHelper;
@@ -124,15 +124,9 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
     private LockscreenShortcutsHelper mShortcutHelper;
     private final ColorMatrixColorFilter mGrayScaleFilter;
 
-    private final Interpolator mLinearOutSlowInInterpolator;
     private boolean mUserSetupComplete;
     private boolean mPrewarmBound;
     private Messenger mPrewarmMessenger;
-    private final WindowManager mWindowManager;
-    private boolean mBottomAreaAttached;
-    private final WindowManager.LayoutParams mWindowLayoutParams;
-    private OnInterceptTouchEventListener mInterceptTouchListener;
-    private BroadcastReceiver mDevicePolicyReceiver;
     private Intent mLastCameraIntent;
 
     private final ServiceConnection mPrewarmConnection = new ServiceConnection() {
@@ -147,48 +141,6 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
             mPrewarmMessenger = null;
         }
     };
-
-    @Override
-    public void setVisibility(int visibility) {
-        if (visibility == View.VISIBLE) {
-            if (!mBottomAreaAttached) {
-                addKeyguardBottomArea(false);
-            }
-        } else if (mBottomAreaAttached) {
-            removeKeyguardBottomArea();
-        }
-        super.setVisibility(visibility);
-    }
-
-    public void expand(boolean expand) {
-        addKeyguardBottomArea(expand);
-    }
-
-    private void addKeyguardBottomArea(boolean fullyExpand) {
-        mWindowLayoutParams.height = fullyExpand ? WindowManager.LayoutParams.MATCH_PARENT :
-                WindowManager.LayoutParams.WRAP_CONTENT;
-        if (!mBottomAreaAttached) {
-            try {
-                mWindowManager.addView(this, mWindowLayoutParams);
-            } catch (IllegalStateException e) {
-                Log.e(TAG, e.getMessage());
-            }
-            mBottomAreaAttached = true;
-        } else {
-            mWindowManager.updateViewLayout(this, mWindowLayoutParams);
-        }
-    }
-
-    private void removeKeyguardBottomArea() {
-        if (mBottomAreaAttached) {
-            try {
-                mWindowManager.removeView(this);
-            } catch (IllegalArgumentException e) {
-                Log.e(TAG, e.getMessage());
-            }
-            mBottomAreaAttached = false;
-        }
-    }
 
     private AssistManager mAssistManager;
 
@@ -207,25 +159,9 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
     public KeyguardBottomAreaView(Context context, AttributeSet attrs, int defStyleAttr,
             int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
-        mLinearOutSlowInInterpolator =
-                AnimationUtils.loadInterpolator(context, android.R.interpolator.linear_out_slow_in);
         ColorMatrix cm = new ColorMatrix();
         cm.setSaturation(0);
         mGrayScaleFilter = new ColorMatrixColorFilter(cm);
-        mWindowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
-
-        mWindowLayoutParams = new WindowManager.LayoutParams();
-        mWindowLayoutParams.type = WindowManager.LayoutParams.TYPE_STATUS_BAR_PANEL;
-        mWindowLayoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-        mWindowLayoutParams.privateFlags =
-                WindowManager.LayoutParams.PRIVATE_FLAG_NO_MOVE_ANIMATION;
-        mWindowLayoutParams.width = WindowManager.LayoutParams.MATCH_PARENT;
-        mWindowLayoutParams.height = WindowManager.LayoutParams.WRAP_CONTENT;
-        mWindowLayoutParams.format = PixelFormat.TRANSPARENT;
-        mWindowLayoutParams.setTitle("KeyguardBottomArea");
-        mWindowLayoutParams.gravity = Gravity.BOTTOM;
     }
 
     private AccessibilityDelegate mAccessibilityDelegate = new AccessibilityDelegate() {
@@ -347,6 +283,24 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
         mIndicationText.setTextSize(TypedValue.COMPLEX_UNIT_PX,
                 getResources().getDimensionPixelSize(
                         com.android.internal.R.dimen.text_size_small_material));
+
+        ViewGroup.LayoutParams lp = mCameraImageView.getLayoutParams();
+        lp.width = getResources().getDimensionPixelSize(R.dimen.keyguard_affordance_width);
+        lp.height = getResources().getDimensionPixelSize(R.dimen.keyguard_affordance_height);
+        mCameraImageView.setLayoutParams(lp);
+        mCameraImageView.setImageDrawable(mContext.getDrawable(R.drawable.ic_camera_alt_24dp));
+
+        lp = mLockIcon.getLayoutParams();
+        lp.width = getResources().getDimensionPixelSize(R.dimen.keyguard_affordance_width);
+        lp.height = getResources().getDimensionPixelSize(R.dimen.keyguard_affordance_height);
+        mLockIcon.setLayoutParams(lp);
+        mLockIcon.update(true /* force */);
+
+        lp = mLeftAffordanceView.getLayoutParams();
+        lp.width = getResources().getDimensionPixelSize(R.dimen.keyguard_affordance_width);
+        lp.height = getResources().getDimensionPixelSize(R.dimen.keyguard_affordance_height);
+        mLeftAffordanceView.setLayoutParams(lp);
+        updateLeftAffordanceIcon();
     }
 
     public void setActivityStarter(ActivityStarter activityStarter) {
@@ -402,7 +356,7 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
             if (isTargetCustom(Shortcuts.LEFT_SHORTCUT)) {
                 visible = !mShortcutHelper.isTargetEmpty(Shortcuts.LEFT_SHORTCUT);
             } else {
-                // El Janky lives again
+                // Display left shortcut
             }
         }
         mLeftAffordanceView.setVisibility(visible ? View.VISIBLE : View.GONE);
@@ -482,7 +436,6 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
     private void watchForCameraPolicyChanges() {
         final IntentFilter filter = new IntentFilter();
         filter.addAction(DevicePolicyManager.ACTION_DEVICE_POLICY_MANAGER_STATE_CHANGED);
-        mDevicePolicyReceiver = new DevicePolicyBroadcastReceiver();
         getContext().registerReceiverAsUser(mDevicePolicyReceiver,
                 UserHandle.ALL, filter, null, null);
         KeyguardUpdateMonitor.getInstance(mContext).registerCallback(mUpdateMonitorCallback);
@@ -648,7 +601,7 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
             AsyncTask.execute(runnable);
         } else {
             mPhoneStatusBar.executeRunnableDismissingKeyguard(runnable, null /* cancelAction */,
-                    false /* dismissShade */, false /* afterKeyguardGone */);
+                    false /* dismissShade */, false /* afterKeyguardGone */, true /* deferred */);
         }
     }
 
@@ -758,7 +711,7 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
         }
         if (mLeftPreview != null) {
             mPreviewContainer.addView(mLeftPreview);
-            mLeftPreview.setVisibility(View.GONE);
+            mLeftPreview.setVisibility(View.INVISIBLE);
         }
     }
 
@@ -776,7 +729,7 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
         mIndicationText.setAlpha(0f);
         mIndicationText.animate()
                 .alpha(1f)
-                .setInterpolator(mLinearOutSlowInInterpolator)
+                .setInterpolator(Interpolators.LINEAR_OUT_SLOW_IN)
                 .setDuration(NotificationPanelView.DOZE_ANIMATION_DURATION);
     }
 
@@ -786,16 +739,12 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
         element.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setInterpolator(mLinearOutSlowInInterpolator)
+                .setInterpolator(Interpolators.LINEAR_OUT_SLOW_IN)
                 .setStartDelay(delay)
                 .setDuration(DOZE_ANIMATION_ELEMENT_DURATION);
     }
 
-    public void cleanup() {
-        removeKeyguardBottomArea();
-    }
-
-    private final class DevicePolicyBroadcastReceiver extends BroadcastReceiver {
+    private final BroadcastReceiver mDevicePolicyReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             post(new Runnable() {
@@ -893,6 +842,7 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
                 label = mContext.getString(R.string.voice_hint);
             } else {
                 label = mContext.getString(R.string.phone_hint);
+
             }
         }
         return label;
@@ -913,45 +863,5 @@ public class KeyguardBottomAreaView extends FrameLayout implements View.OnClickL
     @Override
     public void onChange() {
         updateCustomShortcuts();
-    }
-
-    @Override
-    protected void onAttachedToWindow() {
-        super.onAttachedToWindow();
-        if (mAccessibilityController != null) {
-            mAccessibilityController.addStateChangedCallback(this);
-        }
-        mShortcutHelper.registerAndFetchTargets();
-        updateCustomShortcuts();
-        mUnlockMethodCache.addListener(this);
-        watchForCameraPolicyChanges();
-    }
-
-    @Override
-    protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
-        mAccessibilityController.removeStateChangedCallback(this);
-        if (mDevicePolicyReceiver != null) {
-            mContext.unregisterReceiver(mDevicePolicyReceiver);
-            mDevicePolicyReceiver = null;
-        }
-        mShortcutHelper.cleanup();
-        mUnlockMethodCache.removeListener(this);
-    }
-
-    public interface OnInterceptTouchEventListener {
-        boolean onInterceptTouchEvent(MotionEvent e);
-    }
-
-    public void setOnInterceptTouchListener(OnInterceptTouchEventListener listener) {
-        mInterceptTouchListener = listener;
-    }
-
-    @Override
-    public boolean onInterceptTouchEvent(MotionEvent ev) {
-        if (mInterceptTouchListener != null) {
-            return mInterceptTouchListener.onInterceptTouchEvent(ev);
-        }
-        return super.onInterceptTouchEvent(ev);
     }
 }

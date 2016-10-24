@@ -37,7 +37,7 @@ class Program;
  */
 class Dither {
 public:
-    explicit Dither(Caches& caches);
+    Dither(Caches& caches);
 
     void clear();
     void setupProgram(Program& program, GLuint* textureUnit);

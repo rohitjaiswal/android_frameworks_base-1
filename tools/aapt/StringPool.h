@@ -21,8 +21,6 @@
 #include <errno.h>
 #include <map>
 
-#include <libexpat/expat.h>
-
 using namespace android;
 
 #define PRINT_STRING_METRICS 0

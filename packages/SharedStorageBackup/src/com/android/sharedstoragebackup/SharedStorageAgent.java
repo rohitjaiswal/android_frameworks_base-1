@@ -13,10 +13,13 @@ import android.util.Slog;
 
 import java.io.File;
 import java.io.IOException;
+import android.os.SystemProperties;
+import android.content.Intent;
+import android.net.Uri;
 
 public class SharedStorageAgent extends FullBackupAgent {
     static final String TAG = "SharedStorageAgent";
-    static final boolean DEBUG = false;
+    static final boolean DEBUG = true;
 
     StorageVolume[] mVolumes;
 
@@ -76,7 +79,7 @@ public class SharedStorageAgent extends FullBackupAgent {
         if (slash > 0) {
             try {
                 int i = Integer.parseInt(relpath.substring(0, slash));
-                if (i < mVolumes.length) {
+                if (i <= mVolumes.length) {
                     outFile = new File(mVolumes[i].getPath(), relpath.substring(slash + 1));
                     if (DEBUG) Slog.i(TAG, " => " + outFile.getAbsolutePath());
                 } else {
@@ -93,5 +96,13 @@ public class SharedStorageAgent extends FullBackupAgent {
         }
 
         FullBackup.restoreFile(data, size, type, -1, mtime, outFile);
+        if (isStrictOpEnable()) {
+            getApplicationContext().sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE,
+                    Uri.fromFile(outFile)));
+        }
+    }
+
+    private boolean isStrictOpEnable() {
+        return SystemProperties.getBoolean("persist.sys.strict_op_enable", false);
     }
 }

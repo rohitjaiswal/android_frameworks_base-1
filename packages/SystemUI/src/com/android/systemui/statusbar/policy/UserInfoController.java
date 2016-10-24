@@ -26,7 +26,6 @@ import android.content.pm.UserInfo;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.graphics.Bitmap;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.RemoteException;
@@ -36,9 +35,9 @@ import android.provider.ContactsContract;
 import android.util.Log;
 import android.util.Pair;
 
-import com.android.systemui.BitmapHelper;
-import com.android.systemui.R;
 import com.android.internal.util.UserIcons;
+import com.android.settingslib.drawable.UserIconDrawable;
+import com.android.systemui.R;
 
 import java.util.ArrayList;
 
@@ -51,16 +50,13 @@ public final class UserInfoController {
             new ArrayList<OnUserInfoChangedListener>();
     private AsyncTask<Void, Void, Pair<String, Drawable>> mUserInfoTask;
 
-    private boolean mUseDefaultAvatar;
     private String mUserName;
     private Drawable mUserDrawable;
-    private boolean mProfileSetup;
 
     public UserInfoController(Context context) {
         mContext = context;
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_USER_SWITCHED);
-        filter.addAction(Intent.ACTION_CONFIGURATION_CHANGED);
         mContext.registerReceiver(mReceiver, filter);
 
         IntentFilter profileFilter = new IntentFilter();
@@ -72,9 +68,10 @@ public final class UserInfoController {
 
     public void addListener(OnUserInfoChangedListener callback) {
         mCallbacks.add(callback);
+        callback.onUserInfoChanged(mUserName, mUserDrawable);
     }
 
-    public void removeListener (OnUserInfoChangedListener callback) {
+    public void remListener(OnUserInfoChangedListener callback) {
         mCallbacks.remove(callback);
     }
 
@@ -84,10 +81,6 @@ public final class UserInfoController {
             final String action = intent.getAction();
             if (Intent.ACTION_USER_SWITCHED.equals(action)) {
                 reloadUserInfo();
-            } else if (Intent.ACTION_CONFIGURATION_CHANGED.equals(action)) {
-                if (mUseDefaultAvatar) {
-                    reloadUserInfo();
-                }
             }
         }
     };
@@ -155,31 +148,31 @@ public final class UserInfoController {
                 Drawable avatar = null;
                 Bitmap rawAvatar = um.getUserIcon(userId);
                 if (rawAvatar != null) {
-                    avatar = new BitmapDrawable(mContext.getResources(),
-                            BitmapHelper.createCircularClip(rawAvatar, avatarSize, avatarSize));
+                    avatar = new UserIconDrawable(avatarSize)
+                            .setIcon(rawAvatar).setBadgeIfManagedUser(mContext, userId).bake();
                 } else {
                     avatar = UserIcons.getDefaultUserIcon(isGuest? UserHandle.USER_NULL : userId,
                             /* light= */ true);
-                    mUseDefaultAvatar = true;
                 }
 
-                mProfileSetup = false;
-
-                // Try and read the display name from the local profile
-                final Cursor cursor = context.getContentResolver().query(
-                        ContactsContract.Profile.CONTENT_URI, new String[] {
-                                ContactsContract.CommonDataKinds.Phone._ID,
-                                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
-                        }, null, null, null);
-                if (cursor != null) {
-                    try {
-                        if (cursor.moveToFirst()) {
-                            mProfileSetup = true;
-                            name = cursor.getString(cursor.getColumnIndex(
-                                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME));
+                // If it's a single-user device, get the profile name, since the nickname is not
+                // usually valid
+                if (um.getUsers().size() <= 1) {
+                    // Try and read the display name from the local profile
+                    final Cursor cursor = context.getContentResolver().query(
+                            ContactsContract.Profile.CONTENT_URI, new String[] {
+                                    ContactsContract.CommonDataKinds.Phone._ID,
+                                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+                            }, null, null, null);
+                    if (cursor != null) {
+                        try {
+                            if (cursor.moveToFirst()) {
+                                name = cursor.getString(cursor.getColumnIndex(
+                                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME));
+                            }
+                        } finally {
+                            cursor.close();
                         }
-                    } finally {
-                        cursor.close();
                     }
                 }
                 return new Pair<String, Drawable>(name, avatar);
@@ -202,8 +195,8 @@ public final class UserInfoController {
         }
     }
 
-    public boolean isProfileSetup() {
-        return mProfileSetup;
+    public void onDensityOrFontScaleChanged() {
+        reloadUserInfo();
     }
 
     public interface OnUserInfoChangedListener {

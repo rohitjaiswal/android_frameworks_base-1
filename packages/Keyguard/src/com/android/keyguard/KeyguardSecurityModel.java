@@ -57,14 +57,14 @@ public class KeyguardSecurityModel {
     SecurityMode getSecurityMode() {
         KeyguardUpdateMonitor monitor = KeyguardUpdateMonitor.getInstance(mContext);
 
-        if (SubscriptionManager.isValidSubscriptionId(
-                monitor.getNextSubIdForState(IccCardConstants.State.PIN_REQUIRED))) {
-            return SecurityMode.SimPin;
-        }
-
         if (mIsPukScreenAvailable && SubscriptionManager.isValidSubscriptionId(
                 monitor.getNextSubIdForState(IccCardConstants.State.PUK_REQUIRED))) {
             return SecurityMode.SimPuk;
+        }
+
+        if (SubscriptionManager.isValidSubscriptionId(
+                monitor.getNextSubIdForState(IccCardConstants.State.PIN_REQUIRED))) {
+            return SecurityMode.SimPin;
         }
 
         final int security = mLockPatternUtils.getActivePasswordQuality(
@@ -77,6 +77,7 @@ public class KeyguardSecurityModel {
             case DevicePolicyManager.PASSWORD_QUALITY_ALPHABETIC:
             case DevicePolicyManager.PASSWORD_QUALITY_ALPHANUMERIC:
             case DevicePolicyManager.PASSWORD_QUALITY_COMPLEX:
+            case DevicePolicyManager.PASSWORD_QUALITY_MANAGED:
                 return SecurityMode.Password;
 
             case DevicePolicyManager.PASSWORD_QUALITY_SOMETHING:

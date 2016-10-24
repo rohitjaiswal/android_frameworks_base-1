@@ -49,21 +49,44 @@ public class ThemeConfig implements Cloneable, Parcelable, Comparable<ThemeConfi
     public static final String SYSTEM_DEFAULT = "system";
 
     /**
-     * Special package name for theming the statusbar headers separate from the rest of SystemUI
-     */
-    public static final String SYSTEMUI_STATUSBAR_HEADER_PKG = "com.android.systemui.headers";
-
-    /**
      * Special package name for theming the navbar separate from the rest of SystemUI
      */
     public static final String SYSTEMUI_NAVBAR_PKG = "com.android.systemui.navbar";
-
     public static final String SYSTEMUI_STATUS_BAR_PKG = "com.android.systemui";
 
     // Key for any app which does not have a specific theme applied
     private static final String KEY_DEFAULT_PKG = "default";
     private static final SystemConfig mSystemConfig = new SystemConfig();
     private static final SystemAppTheme mSystemAppTheme = new SystemAppTheme();
+
+	// Deprecated constants for upgrade
+    private static final String THEME_PACKAGE_NAME_PERSISTENCE_PROPERTY
+            = "persist.sys.themePackageName";
+
+    private static final String THEME_ICONPACK_PACKAGE_NAME_PERSISTENCE_PROPERTY
+            = "themeIconPackPkgName";
+
+    private static final String THEME_FONT_PACKAGE_NAME_PERSISTENCE_PROPERTY
+            = "themeFontPackPkgName";
+
+    /**
+     * @hide
+     * Serialized json structure mapping app pkgnames to their set theme.
+     *
+     * {
+     *  "default":{
+     *"     stylePkgName":"com.jasonevil.theme.miuiv5dark",
+     *      "iconPkgName":"com.cyngn.hexo",
+     *      "fontPkgName":"com.cyngn.hexo"
+     *   }
+     * }
+
+     * If an app does not have a specific theme set then it will use the 'default' theme+
+     * example: 'default' -> overlayPkgName: 'org.blue.theme'
+     *          'com.android.phone' -> 'com.red.theme'
+     *          'com.google.vending' -> 'com.white.theme'
+     */
+    public static final String THEME_PKG_CONFIGURATION_PERSISTENCE_PROPERTY = "themeConfig";
 
     // Maps pkgname to theme (ex com.angry.birds -> red theme)
     protected final Map<String, AppTheme> mThemes = new ArrayMap<>();
@@ -83,10 +106,6 @@ public class ThemeConfig implements Cloneable, Parcelable, Comparable<ThemeConfi
 
     public String getOverlayForNavBar() {
         return getOverlayPkgNameForApp(SYSTEMUI_NAVBAR_PKG);
-    }
-
-    public String getOverlayForHeaders() {
-        return getOverlayPkgNameForApp(SYSTEMUI_STATUSBAR_HEADER_PKG);
     }
 
     public String getOverlayPkgNameForApp(String appPkgName) {
@@ -186,17 +205,17 @@ public class ThemeConfig implements Cloneable, Parcelable, Comparable<ThemeConfi
         ThemeConfig bootTheme = mSystemConfig;
         try {
             String json = Settings.Secure.getStringForUser(resolver,
-                    Configuration.THEME_PKG_CONFIGURATION_PERSISTENCE_PROPERTY, userHandle);
+                    THEME_PKG_CONFIGURATION_PERSISTENCE_PROPERTY, userHandle);
             bootTheme = ThemeConfig.fromJson(json);
 
             // Handle upgrade Case: Previously the theme configuration was in separate fields
             if (bootTheme == null) {
                 String overlayPkgName =  Settings.Secure.getStringForUser(resolver,
-                        Configuration.THEME_PACKAGE_NAME_PERSISTENCE_PROPERTY, userHandle);
+                        THEME_PACKAGE_NAME_PERSISTENCE_PROPERTY, userHandle);
                 String iconPackPkgName = Settings.Secure.getStringForUser(resolver,
-                        Configuration.THEME_ICONPACK_PACKAGE_NAME_PERSISTENCE_PROPERTY, userHandle);
+                        THEME_ICONPACK_PACKAGE_NAME_PERSISTENCE_PROPERTY, userHandle);
                 String fontPkgName = Settings.Secure.getStringForUser(resolver,
-                        Configuration.THEME_FONT_PACKAGE_NAME_PERSISTENCE_PROPERTY, userHandle);
+                        THEME_FONT_PACKAGE_NAME_PERSISTENCE_PROPERTY, userHandle);
 
                 Builder builder = new Builder();
                 builder.defaultOverlay(overlayPkgName);

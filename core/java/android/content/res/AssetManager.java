@@ -16,16 +16,20 @@
 
 package android.content.res;
 
+import android.annotation.AnyRes;
+import android.annotation.ArrayRes;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.annotation.StringRes;
+import android.content.res.Configuration.NativeConfig;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.util.SparseArray;
 import android.util.TypedValue;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
 import java.util.HashMap;
 
 /**
@@ -79,16 +83,6 @@ public final class AssetManager implements AutoCloseable {
     private boolean mOpen = true;
     private HashMap<Long, RuntimeException> mRefStacks;
  
-    private String mAppName;
-
-    private boolean mThemeSupport;
-    private String mThemePackageName;
-    private String mIconPackageName;
-    private String mCommonResPackageName;
-    private ArrayList<Integer> mThemeCookies = new ArrayList<Integer>(2);
-    private int mIconPackCookie;
-    private int mCommonResCookie;
-
     /**
      * Create a new AssetManager containing only the basic system assets.
      * Applications will not generally use this method, instead retrieving the
@@ -154,80 +148,95 @@ public final class AssetManager implements AutoCloseable {
     }
 
     /**
-     * Retrieve the string value associated with a particular resource
-     * identifier for the current configuration / skin.
+     * Retrieves the string value associated with a particular resource
+     * identifier for the current configuration.
+     *
+     * @param resId the resource identifier to load
+     * @return the string value, or {@code null}
      */
-    /*package*/ final CharSequence getResourceText(int ident) {
+    @Nullable
+    final CharSequence getResourceText(@StringRes int resId) {
         synchronized (this) {
-            TypedValue tmpValue = mValue;
-            int block = loadResourceValue(ident, (short) 0, tmpValue, true);
-            if (block >= 0) {
-                if (tmpValue.type == TypedValue.TYPE_STRING) {
-                    return mStringBlocks[block].get(tmpValue.data);
-                }
-                return tmpValue.coerceToString();
+            final TypedValue outValue = mValue;
+            if (getResourceValue(resId, 0, outValue, true)) {
+                return outValue.coerceToString();
             }
+            return null;
         }
-        return null;
     }
 
     /**
-     * Retrieve the string value associated with a particular resource
-     * identifier for the current configuration / skin.
+     * Retrieves the string value associated with a particular resource
+     * identifier for the current configuration.
+     *
+     * @param resId the resource identifier to load
+     * @param bagEntryId
+     * @return the string value, or {@code null}
      */
-    /*package*/ final CharSequence getResourceBagText(int ident, int bagEntryId) {
+    @Nullable
+    final CharSequence getResourceBagText(@StringRes int resId, int bagEntryId) {
         synchronized (this) {
-            TypedValue tmpValue = mValue;
-            int block = loadResourceBagValue(ident, bagEntryId, tmpValue, true);
-            if (block >= 0) {
-                if (tmpValue.type == TypedValue.TYPE_STRING) {
-                    return mStringBlocks[block].get(tmpValue.data);
-                }
-                return tmpValue.coerceToString();
+            final TypedValue outValue = mValue;
+            final int block = loadResourceBagValue(resId, bagEntryId, outValue, true);
+            if (block < 0) {
+                return null;
             }
+            if (outValue.type == TypedValue.TYPE_STRING) {
+                return mStringBlocks[block].get(outValue.data);
+            }
+            return outValue.coerceToString();
         }
-        return null;
     }
 
     /**
-     * Retrieve the string array associated with a particular resource
-     * identifier.
-     * @param id Resource id of the string array
+     * Retrieves the string array associated with a particular resource
+     * identifier for the current configuration.
+     *
+     * @param resId the resource identifier of the string array
+     * @return the string array, or {@code null}
      */
-    /*package*/ final String[] getResourceStringArray(final int id) {
-        String[] retArray = getArrayStringResource(id);
-        return retArray;
+    @Nullable
+    final String[] getResourceStringArray(@ArrayRes int resId) {
+        return getArrayStringResource(resId);
     }
 
-
-    /*package*/ final boolean getResourceValue(int ident,
-                                               int density,
-                                               TypedValue outValue,
-                                               boolean resolveRefs)
-    {
-        int block = loadResourceValue(ident, (short) density, outValue, resolveRefs);
-        if (block >= 0) {
-            if (outValue.type != TypedValue.TYPE_STRING) {
-                return true;
-            }
+    /**
+     * Populates {@code outValue} with the data associated a particular
+     * resource identifier for the current configuration.
+     *
+     * @param resId the resource identifier to load
+     * @param densityDpi the density bucket for which to load the resource
+     * @param outValue the typed value in which to put the data
+     * @param resolveRefs {@code true} to resolve references, {@code false}
+     *                    to leave them unresolved
+     * @return {@code true} if the data was loaded into {@code outValue},
+     *         {@code false} otherwise
+     */
+    final boolean getResourceValue(@AnyRes int resId, int densityDpi, @NonNull TypedValue outValue,
+            boolean resolveRefs) {
+        final int block = loadResourceValue(resId, (short) densityDpi, outValue, resolveRefs);
+        if (block < 0) {
+            return false;
+        }
+        if (outValue.type == TypedValue.TYPE_STRING) {
             outValue.string = mStringBlocks[block].get(outValue.data);
-            return true;
         }
-        return false;
+        return true;
     }
 
     /**
      * Retrieve the text array associated with a particular resource
      * identifier.
-     * @param id Resource id of the string array
+     *
+     * @param resId the resource id of the string array
      */
-    /*package*/ final CharSequence[] getResourceTextArray(final int id) {
-        int[] rawInfoArray = getArrayStringInfo(id);
-        int rawInfoArrayLen = rawInfoArray.length;
+    final CharSequence[] getResourceTextArray(@ArrayRes int resId) {
+        final int[] rawInfoArray = getArrayStringInfo(resId);
+        final int rawInfoArrayLen = rawInfoArray.length;
         final int infoArrayLen = rawInfoArrayLen / 2;
         int block;
         int index;
-        CharSequence[] retArray = new CharSequence[infoArrayLen];
+        final CharSequence[] retArray = new CharSequence[infoArrayLen];
         for (int i = 0, j = 0; i < rawInfoArrayLen; i = i + 2, j++) {
             block = rawInfoArray[i];
             index = rawInfoArray[i + 1];
@@ -235,38 +244,45 @@ public final class AssetManager implements AutoCloseable {
         }
         return retArray;
     }
-    
-    /*package*/ final boolean getThemeValue(long theme, int ident,
-            TypedValue outValue, boolean resolveRefs) {
-        int block = loadThemeAttributeValue(theme, ident, outValue, resolveRefs);
-        if (block >= 0) {
-            if (outValue.type != TypedValue.TYPE_STRING) {
-                return true;
-            }
-            StringBlock[] blocks = mStringBlocks;
-            if (blocks == null) {
-                ensureStringBlocks();
-                blocks = mStringBlocks;
-            }
+
+    /**
+     * Populates {@code outValue} with the data associated with a particular
+     * resource identifier for the current configuration. Resolves theme
+     * attributes against the specified theme.
+     *
+     * @param theme the native pointer of the theme
+     * @param resId the resource identifier to load
+     * @param outValue the typed value in which to put the data
+     * @param resolveRefs {@code true} to resolve references, {@code false}
+     *                    to leave them unresolved
+     * @return {@code true} if the data was loaded into {@code outValue},
+     *         {@code false} otherwise
+     */
+    final boolean getThemeValue(long theme, @AnyRes int resId, @NonNull TypedValue outValue,
+            boolean resolveRefs) {
+        final int block = loadThemeAttributeValue(theme, resId, outValue, resolveRefs);
+        if (block < 0) {
+            return false;
+        }
+        if (outValue.type == TypedValue.TYPE_STRING) {
+            final StringBlock[] blocks = ensureStringBlocks();
             outValue.string = blocks[block].get(outValue.data);
-            return true;
         }
-        return false;
+        return true;
     }
 
-    /*package*/ final void ensureStringBlocks() {
-        if (mStringBlocks == null) {
-            synchronized (this) {
-                if (mStringBlocks == null) {
-                    makeStringBlocks(sSystem.mStringBlocks);
-                }
-            }
-        }
-    }
-
-    /*package*/ final void recreateStringBlocks() {
+    /**
+     * Ensures the string blocks are loaded.
+     *
+     * @return the string blocks
+     */
+    @NonNull
+    final StringBlock[] ensureStringBlocks() {
         synchronized (this) {
-            makeStringBlocks(sSystem.mStringBlocks);
+            if (mStringBlocks == null) {
+                makeStringBlocks(sSystem.mStringBlocks);
+            }
+            return mStringBlocks;
         }
     }
 
@@ -628,16 +644,28 @@ public final class AssetManager implements AutoCloseable {
      * {@hide}
      */
     public final int addAssetPath(String path) {
+        return  addAssetPathInternal(path, false);
+    }
+
+    /**
+     * Add an application assets to the asset manager and loading it as shared library.
+     * This can be either a directory or ZIP file.  Not for use by applications.  Returns
+     * the cookie of the added asset, or 0 on failure.
+     * {@hide}
+     */
+    public final int addAssetPathAsSharedLibrary(String path) {
+        return addAssetPathInternal(path, true);
+    }
+
+    private final int addAssetPathInternal(String path, boolean appAsLib) {
         synchronized (this) {
-            int res = addAssetPathNative(path);
-            if (mStringBlocks != null) {
-                makeStringBlocks(mStringBlocks);
-            }
+            int res = addAssetPathNative(path, appAsLib);
+            makeStringBlocks(mStringBlocks);
             return res;
         }
     }
 
-    private native final int addAssetPathNative(String path);
+    private native final int addAssetPathNative(String path, boolean appAsLib);
 
      /**
      * Add a set of assets to overlay an already added set of assets.
@@ -647,14 +675,11 @@ public final class AssetManager implements AutoCloseable {
      *
      * {@hide}
      */
-     public final int addOverlayPath(String idmapPath, String themeApkPath,
-             String resApkPath, String targetPkgPath, String prefixPath) {
+
+    public final int addOverlayPath(String idmapPath) {
         synchronized (this) {
-            int res = addOverlayPathNative(idmapPath, themeApkPath, resApkPath, targetPkgPath,
-                    prefixPath);
-            if (mStringBlocks != null) {
-                makeStringBlocks(mStringBlocks);
-            }
+            int res = addOverlayPathNative(idmapPath);
+            makeStringBlocks(mStringBlocks);
             return res;
         }
     }
@@ -664,59 +689,7 @@ public final class AssetManager implements AutoCloseable {
      *
      * {@hide}
      */
-    private native final int addOverlayPathNative(String idmapPath, String themeApkPath,
-            String resApkPath, String targetPkgPath, String prefixPath);
-
-    /**
-     * Add a set of common assets.
-     *
-     * {@hide}
-     */
-    public final int addCommonOverlayPath(String themeApkPath,
-            String resApkPath, String prefixPath) {
-        synchronized (this) {
-            return addCommonOverlayPathNative(themeApkPath, resApkPath, prefixPath);
-        }
-    }
-
-    private native final int addCommonOverlayPathNative(String themeApkPath,
-            String resApkPath, String prefixPath);
-
-    /**
-     * Add a set of assets as an icon pack. A pkgIdOverride value will change the package's id from
-     * what is in the resource table to a new value. Manage this carefully, if icon pack has more
-     * than one package then that next package's id will use pkgIdOverride+1.
-     *
-     * Icon packs are different from overlays as they have a different pkg id and
-     * do not use idmap so no targetPkg is required
-     *
-     * {@hide}
-     */
-    public final int addIconPath(String idmapPath, String resApkPath,
-            String prefixPath, int pkgIdOverride) {
-        synchronized (this) {
-            return addIconPathNative(idmapPath, resApkPath, prefixPath, pkgIdOverride);
-        }
-    }
-
-    private native final int addIconPathNative(String idmapPath,
-            String resApkPath, String prefixPath, int pkgIdOverride);
-
-    /**
-    * Delete a set of overlay assets from the asset manager. Not for use by
-    * applications. Returns true if succeeded or false on failure.
-    *
-    * Also works for icon packs
-    *
-    * {@hide}
-    */
-    public final boolean removeOverlayPath(String packageName, int cookie) {
-        synchronized (this) {
-            return removeOverlayPathNative(packageName, cookie);
-        }
-    }
-
-    private native final boolean removeOverlayPathNative(String packageName, int cookie);
+    public native final int addOverlayPathNative(String idmapPath);
 
     /**
      * Add multiple sets of assets to the asset manager at once.  See
@@ -739,139 +712,12 @@ public final class AssetManager implements AutoCloseable {
     }
 
     /**
-     * Sets a flag indicating that this AssetManager should have themes
-     * attached, according to the initial request to create it by the
-     * ApplicationContext.
-     *
-     * {@hide}
-     */
-    public final void setThemeSupport(boolean themeSupport) {
-        mThemeSupport = themeSupport;
-    }
-
-    /**
-     * Should this AssetManager have themes attached, according to the initial
-     * request to create it by the ApplicationContext?
-     *
-     * {@hide}
-     */
-    public final boolean hasThemeSupport() {
-        return mThemeSupport;
-    }
-
-    /**
-     * Get package name of current icon pack (may return null).
-     * {@hide}
-     */
-    public String getIconPackageName() {
-        return mIconPackageName;
-    }
-
-    /**
-     * Sets icon package name
-     * {@hide}
-     */
-    public void setIconPackageName(String packageName) {
-        mIconPackageName = packageName;
-    }
-
-    /**
-     * Get package name of current common resources (may return null).
-     * {@hide}
-     */
-    public String getCommonResPackageName() {
-        return mCommonResPackageName;
-    }
-
-    /**
-     * Sets common resources package name
-     * {@hide}
-     */
-    public void setCommonResPackageName(String packageName) {
-        mCommonResPackageName = packageName;
-    }
-
-    /**
-     * Get package name of current theme (may return null).
-     * {@hide}
-     */
-    public String getThemePackageName() {
-        return mThemePackageName;
-    }
-
-    /**
-     * Sets package name and highest level style id for current theme (null, 0 is allowed).
-     * {@hide}
-     */
-    public void setThemePackageName(String packageName) {
-        mThemePackageName = packageName;
-    }
-
-    /**
-     * Get asset cookie for current theme (may return 0).
-     * {@hide}
-     */
-    public ArrayList<Integer> getThemeCookies() {
-        return mThemeCookies;
-    }
-
-    /** {@hide} */
-    public void setIconPackCookie(int cookie) {
-        mIconPackCookie = cookie;
-    }
-
-    /** {@hide} */
-    public int getIconPackCookie() {
-        return mIconPackCookie;
-    }
-
-    /** {@hide} */
-    public void setCommonResCookie(int cookie) {
-        mCommonResCookie = cookie;
-    }
-
-    /** {@hide} */
-    public int getCommonResCookie() {
-        return mCommonResCookie;
-    }
-
-    /**
-     * Sets asset cookie for current theme (0 if not a themed asset manager).
-     * {@hide}
-     */
-    public void addThemeCookie(int cookie) {
-        mThemeCookies.add(cookie);
-    }
-
-    /** {@hide} */
-    public String getAppName() {
-        return mAppName;
-    }
-
-    /** {@hide} */
-    public void setAppName(String pkgName) {
-        mAppName = pkgName;
-    }
-
-    /** {@hide} */
-    public boolean hasThemedAssets() {
-        return mThemeCookies.size() > 0;
-    }
-
-    /**
      * Determine whether the state in this asset manager is up-to-date with
      * the files on the filesystem.  If false is returned, you need to
      * instantiate a new AssetManager class to see the new data.
      * {@hide}
      */
     public native final boolean isUpToDate();
-
-    /**
-     * Change the locale being used by this asset manager.  Not for use by
-     * applications.
-     * {@hide}
-     */
-    public native final void setLocale(String locale);
 
     /**
      * Get the locales that this asset manager contains data for.
@@ -885,6 +731,21 @@ public final class AssetManager implements AutoCloseable {
      * and {@code CC} is a two letter country code.
      */
     public native final String[] getLocales();
+
+    /**
+     * Same as getLocales(), except that locales that are only provided by the system (i.e. those
+     * present in framework-res.apk or its overlays) will not be listed.
+     *
+     * For example, if the "system" assets support English, French, and German, and the additional
+     * assets support Cherokee and French, getLocales() would return
+     * [Cherokee, English, French, German], while getNonSystemLocales() would return
+     * [Cherokee, French].
+     * {@hide}
+     */
+    public native final String[] getNonSystemLocales();
+
+    /** {@hide} */
+    public native final Configuration[] getSizeConfigurations();
 
     /**
      * Change the configuation used when retrieving resources.  Not for use by
@@ -936,7 +797,10 @@ public final class AssetManager implements AutoCloseable {
     /*package*/ static final int STYLE_DATA = 1;
     /*package*/ static final int STYLE_ASSET_COOKIE = 2;
     /*package*/ static final int STYLE_RESOURCE_ID = 3;
-    /*package*/ static final int STYLE_CHANGING_CONFIGURATIONS = 4;
+
+    /* Offset within typed data array for native changingConfigurations. */
+    static final int STYLE_CHANGING_CONFIGURATIONS = 4;
+
     /*package*/ static final int STYLE_DENSITY = 5;
     /*package*/ native static final boolean applyStyle(long theme,
             int defStyleAttr, int defStyleRes, long xmlParser,
@@ -985,7 +849,7 @@ public final class AssetManager implements AutoCloseable {
                                                                 TypedValue outValue,
                                                                 boolean resolve);
     /*package*/ native static final void dumpTheme(long theme, int priority, String tag, String prefix);
-    /*package*/ native static final int getThemeChangingConfigurations(long theme);
+    /*package*/ native static final @NativeConfig int getThemeChangingConfigurations(long theme);
 
     private native final long openXmlAssetNative(int cookie, String fileName);
 
@@ -995,26 +859,6 @@ public final class AssetManager implements AutoCloseable {
     /*package*/ native final int[] getStyleAttributes(int themeRes);
 
     private native final void init(boolean isSystem);
-    /**
-     * {@hide}
-     */
-    public native final int getBasePackageCount();
-
-    /**
-     * {@hide}
-     */
-    public native final String getBasePackageName(int index);
-
-    /**
-     * {@hide}
-     */
-    public native final String getBaseResourcePackageName(int index);
-
-    /**
-     * {@hide}
-     */
-    public native final int getBasePackageId(int index);
-
     private native final void destroy();
 
     private final void incRefsLocked(long id) {

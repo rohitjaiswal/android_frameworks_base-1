@@ -42,7 +42,7 @@ enum ResourceType {
 class ResourceReference {
 public:
 
-    explicit ResourceReference(ResourceType type) {
+    ResourceReference(ResourceType type) {
         refCount = 0; destroyed = false; resourceType = type;
     }
 

@@ -28,7 +28,7 @@ namespace uirenderer {
 class CanvasPropertyPrimitive : public VirtualLightRefBase {
     PREVENT_COPY_AND_ASSIGN(CanvasPropertyPrimitive);
 public:
-    explicit CanvasPropertyPrimitive(float initialValue) : value(initialValue) {}
+    CanvasPropertyPrimitive(float initialValue) : value(initialValue) {}
 
     float value;
 };
@@ -36,7 +36,7 @@ public:
 class CanvasPropertyPaint : public VirtualLightRefBase {
     PREVENT_COPY_AND_ASSIGN(CanvasPropertyPaint);
 public:
-    explicit CanvasPropertyPaint(const SkPaint& initialValue) : value(initialValue) {}
+    CanvasPropertyPaint(const SkPaint& initialValue) : value(initialValue) {}
 
     SkPaint value;
 };

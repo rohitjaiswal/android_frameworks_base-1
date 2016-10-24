@@ -22,7 +22,6 @@ import static android.system.OsConstants.STDERR_FILENO;
 import static android.system.OsConstants.STDIN_FILENO;
 import static android.system.OsConstants.STDOUT_FILENO;
 
-import android.graphics.Typeface;
 import android.net.Credentials;
 import android.net.LocalSocket;
 import android.os.Process;
@@ -195,10 +194,6 @@ class ZygoteConnection {
                 Os.fcntlInt(childPipeFd, F_SETFD, 0);
             }
 
-            if (parsedArgs.refreshTheme) {
-                Typeface.recreateDefaults();
-            }
-
             /**
              * In order to avoid leaking descriptors to the Zygote child,
              * the native code must close the two Zygote socket descriptors
@@ -327,7 +322,7 @@ class ZygoteConnection {
 
         /**
          * From --enable-debugger, --enable-checkjni, --enable-assert,
-         * --enable-safemode, --enable-jit, --generate-debug-info and --enable-jni-logging.
+         * --enable-safemode, --generate-debug-info and --enable-jni-logging.
          */
         int debugFlags;
 
@@ -377,9 +372,6 @@ class ZygoteConnection {
          * not be reliable in the case of process-sharing apps.
          */
         String appDataDir;
-
-        /** from --refresh_theme */
-        boolean refreshTheme;
 
         /**
          * Constructs instance and parses args
@@ -440,10 +432,12 @@ class ZygoteConnection {
                     debugFlags |= Zygote.DEBUG_ENABLE_SAFEMODE;
                 } else if (arg.equals("--enable-checkjni")) {
                     debugFlags |= Zygote.DEBUG_ENABLE_CHECKJNI;
-                } else if (arg.equals("--enable-jit")) {
-                    debugFlags |= Zygote.DEBUG_ENABLE_JIT;
                 } else if (arg.equals("--generate-debug-info")) {
                     debugFlags |= Zygote.DEBUG_GENERATE_DEBUG_INFO;
+                } else if (arg.equals("--always-jit")) {
+                    debugFlags |= Zygote.DEBUG_ALWAYS_JIT;
+                } else if (arg.equals("--native-debuggable")) {
+                    debugFlags |= Zygote.DEBUG_NATIVE_DEBUGGABLE;
                 } else if (arg.equals("--enable-jni-logging")) {
                     debugFlags |= Zygote.DEBUG_ENABLE_JNI_LOGGING;
                 } else if (arg.equals("--enable-assert")) {
@@ -537,8 +531,6 @@ class ZygoteConnection {
                     instructionSet = arg.substring(arg.indexOf('=') + 1);
                 } else if (arg.startsWith("--app-data-dir=")) {
                     appDataDir = arg.substring(arg.indexOf('=') + 1);
-                } else if (arg.equals("--refresh_theme")) {
-                    refreshTheme = true;
                 } else {
                     break;
                 }

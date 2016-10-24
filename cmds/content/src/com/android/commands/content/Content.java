@@ -103,12 +103,10 @@ public class Content {
                 + "--where \"name=\'new_setting\'\"\n"
         + "\n"
         + "usage: adb shell content query --uri <URI> [--user <USER_ID>]"
-                + " [--projection <PROJECTION>] [--where <WHERE>] [--sort <SORT_ORDER>] "
-                + " [--show-type <SHOW-TYPE>] \n"
+                + " [--projection <PROJECTION>] [--where <WHERE>] [--sort <SORT_ORDER>]\n"
         + "  <PROJECTION> is a list of colon separated column names and is formatted:\n"
         + "  <COLUMN_NAME>[:<COLUMN_NAME>...]\n"
         + "  <SORT_ORDER> is the order in which rows in the result should be sorted.\n"
-        + "  <SHOW-TYPE> if true shows the type of value of each projection column"
         + "  Example:\n"
         + "  # Select \"name\" and \"value\" columns from secure settings where \"name\" is "
                 + "equal to \"new_setting\" and sort the result by name in ascending order.\n"
@@ -144,7 +142,6 @@ public class Content {
         private static final String ARGUMENT_METHOD = "--method";
         private static final String ARGUMENT_ARG = "--arg";
         private static final String ARGUMENT_EXTRA = "--extra";
-        private static final String ARGUMENT_SHOW_TYPE = "--show-type";
         private static final String TYPE_BOOLEAN = "b";
         private static final String TYPE_STRING = "s";
         private static final String TYPE_INTEGER = "i";
@@ -187,7 +184,7 @@ public class Content {
 
         private InsertCommand parseInsertCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             ContentValues values = new ContentValues();
             for (String argument; (argument = mTokenizer.nextArg()) != null;) {
                 if (ARGUMENT_URI.equals(argument)) {
@@ -213,7 +210,7 @@ public class Content {
 
         private DeleteCommand parseDeleteCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             String where = null;
             for (String argument; (argument = mTokenizer.nextArg())!= null;) {
                 if (ARGUMENT_URI.equals(argument)) {
@@ -235,7 +232,7 @@ public class Content {
 
         private UpdateCommand parseUpdateCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             String where = null;
             ContentValues values = new ContentValues();
             for (String argument; (argument = mTokenizer.nextArg())!= null;) {
@@ -264,7 +261,7 @@ public class Content {
 
         public CallCommand parseCallCommand() {
             String method = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             String arg = null;
             Uri uri = null;
             ContentValues values = new ContentValues();
@@ -296,7 +293,7 @@ public class Content {
 
         private ReadCommand parseReadCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             for (String argument; (argument = mTokenizer.nextArg())!= null;) {
                 if (ARGUMENT_URI.equals(argument)) {
                     uri = Uri.parse(argumentValueRequired(argument));
@@ -315,11 +312,10 @@ public class Content {
 
         public QueryCommand parseQueryCommand() {
             Uri uri = null;
-            int userId = UserHandle.USER_OWNER;
+            int userId = UserHandle.USER_SYSTEM;
             String[] projection = null;
             String sort = null;
             String where = null;
-            boolean showType = false;
             for (String argument; (argument = mTokenizer.nextArg())!= null;) {
                 if (ARGUMENT_URI.equals(argument)) {
                     uri = Uri.parse(argumentValueRequired(argument));
@@ -331,8 +327,6 @@ public class Content {
                     sort = argumentValueRequired(argument);
                 } else if (ARGUMENT_PROJECTION.equals(argument)) {
                     projection = argumentValueRequired(argument).split("[\\s]*:[\\s]*");
-                } else if (ARGUMENT_SHOW_TYPE.equals(argument)) {
-                    showType = argumentValueRequiredForBoolean(argument);
                 } else {
                     throw new IllegalArgumentException("Unsupported argument: " + argument);
                 }
@@ -341,7 +335,7 @@ public class Content {
                 throw new IllegalArgumentException("Content provider URI not specified."
                         + " Did you specify --uri argument?");
             }
-            return new QueryCommand(uri, userId, projection, where, sort, showType);
+            return new QueryCommand(uri, userId, projection, where, sort);
         }
 
         private void parseBindValue(ContentValues values) {
@@ -371,14 +365,6 @@ public class Content {
             } else {
                 throw new IllegalArgumentException("Unsupported type: " + type);
             }
-        }
-
-        private boolean argumentValueRequiredForBoolean(String argument) {
-            String value = mTokenizer.nextArg();
-            if (TextUtils.isEmpty(value) || value.startsWith(ARGUMENT_PREFIX)) {
-                throw new IllegalArgumentException("No value for argument: " + argument);
-            }
-            return value.equals("true");
         }
 
         private String argumentValueRequired(String argument) {
@@ -553,15 +539,12 @@ public class Content {
     private static class QueryCommand extends DeleteCommand {
         final String[] mProjection;
         final String mSortOrder;
-        final boolean mShowType;
 
         public QueryCommand(
-                Uri uri, int userId, String[] projection, String where, String sortOrder,
-                boolean showType) {
+                Uri uri, int userId, String[] projection, String where, String sortOrder) {
             super(uri, userId, where);
             mProjection = projection;
             mSortOrder = sortOrder;
-            mShowType = showType;
         }
 
         @Override
@@ -607,7 +590,6 @@ public class Content {
                                     break;
                             }
                             builder.append(columnName).append("=").append(columnValue);
-                            if (mShowType) builder.append(", type=").append(type);
                         }
                         System.out.println(builder);
                     } while (cursor.moveToNext());

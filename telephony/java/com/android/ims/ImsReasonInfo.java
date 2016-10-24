@@ -217,6 +217,11 @@ public class ImsReasonInfo implements Parcelable {
     public static final int CODE_ECBM_NOT_SUPPORTED = 901;
 
     /**
+     * Fail code used to indicate that Multi-endpoint is not supported by the Ims framework.
+     */
+    public static final int CODE_MULTIENDPOINT_NOT_SUPPORTED = 902;
+
+    /**
      * Ims Registration error code
      */
     public static final int CODE_REGISTRATION_ERROR = 1000;
@@ -241,12 +246,12 @@ public class ImsReasonInfo implements Parcelable {
     public static final int CODE_ANSWERED_ELSEWHERE = 1014;
 
     /**
-     * For VICE - Call Pull request has failed
+     * For MultiEndpoint - Call Pull request has failed
      */
     public static final int CODE_CALL_PULL_OUT_OF_SYNC = 1015;
 
     /**
-     * For VICE - Call has been pulled from primary to secondary
+     * For MultiEndpoint - Call has been pulled from primary to secondary
      */
     public static final int CODE_CALL_END_CAUSE_CALL_PULL = 1016;
 
@@ -259,11 +264,32 @@ public class ImsReasonInfo implements Parcelable {
     public static final int CODE_SUPP_SVC_REINVITE_COLLISION = 1203;
 
     /**
+     * DPD Procedure received no response or send failed
+     */
+    public static final int CODE_IWLAN_DPD_FAILURE = 1300;
+
+    /**
+     * Establishment of the ePDG Tunnel Failed
+     */
+    public static final int CODE_EPDG_TUNNEL_ESTABLISH_FAILURE = 1400;
+
+    /**
+     * Re-keying of the ePDG Tunnel Failed; may not always result in teardown
+     */
+    public static final int CODE_EPDG_TUNNEL_REKEY_FAILURE = 1401;
+
+    /**
+     * Connection to the packet gateway is lost
+     */
+    public static final int CODE_EPDG_TUNNEL_LOST_CONNECTION = 1402;
+
+    /**
      * Network string error messages.
      * mExtraMessage may have these values.
      */
     public static final String EXTRA_MSG_SERVICE_NOT_AUTHORIZED
             = "Forbidden. Not Authorized for Service";
+
 
     // For main reason code
     public int mCode;

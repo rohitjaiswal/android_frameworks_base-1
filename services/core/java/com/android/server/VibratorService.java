@@ -24,7 +24,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.ContentObserver;
 import android.hardware.input.InputManager;
-import android.net.Uri;
+import android.media.AudioManager;
 import android.os.BatteryStats;
 import android.os.Handler;
 import android.os.IVibratorService;
@@ -55,9 +55,6 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.ListIterator;
-
-import cyanogenmod.hardware.CMHardwareManager;
-import cyanogenmod.providers.CMSettings;
 
 public class VibratorService extends IVibratorService.Stub
         implements InputManager.InputDeviceListener {
@@ -90,12 +87,9 @@ public class VibratorService extends IVibratorService.Stub
     private int mCurVibUid = -1;
     private boolean mLowPowerMode;
     private SettingsObserver mSettingObserver;
-    private CMHardwareManager mHardware;
-    private int mMinVibratorIntensity;
-    private int mMaxVibratorIntensity;
-    private int mVibratorIntensity;
 
     native static boolean vibratorExists();
+    native static void vibratorInit();
     native static void vibratorOn(long milliseconds);
     native static void vibratorOff();
 
@@ -203,6 +197,7 @@ public class VibratorService extends IVibratorService.Stub
     }
 
     VibratorService(Context context) {
+        vibratorInit();
         // Reset the hardware to a default state, in case this is a runtime
         // restart instead of a fresh boot.
         vibratorOff();
@@ -229,7 +224,7 @@ public class VibratorService extends IVibratorService.Stub
     }
 
     public void systemReady() {
-        mIm = (InputManager)mContext.getSystemService(Context.INPUT_SERVICE);
+        mIm = mContext.getSystemService(InputManager.class);
         mSettingObserver = new SettingsObserver(mH);
 
         mPowerManagerInternal = LocalServices.getService(PowerManagerInternal.class);
@@ -249,19 +244,8 @@ public class VibratorService extends IVibratorService.Stub
             @Override
             public void onReceive(Context context, Intent intent) {
                 updateInputDeviceVibrators();
-                updateVibratorIntensity();
             }
         }, new IntentFilter(Intent.ACTION_USER_SWITCHED), null, mH);
-
-        mHardware = CMHardwareManager.getInstance(mContext);
-        if (mHardware.isSupported(CMHardwareManager.FEATURE_VIBRATOR)) {
-            mContext.getContentResolver().registerContentObserver(
-                    CMSettings.Secure.getUriFor(CMSettings.Secure.VIBRATOR_INTENSITY),
-                    true, mSettingObserver, UserHandle.USER_ALL);
-            mMinVibratorIntensity = mHardware.getVibratorMinIntensity();
-            mMaxVibratorIntensity = mHardware.getVibratorMaxIntensity();
-            updateVibratorIntensity();
-        }
 
         updateInputDeviceVibrators();
     }
@@ -272,20 +256,9 @@ public class VibratorService extends IVibratorService.Stub
         }
 
         @Override
-        public void onChange(boolean selfChange, Uri uri) {
-            if (uri.equals(CMSettings.Secure.getUriFor(CMSettings.Secure.VIBRATOR_INTENSITY))) {
-                updateVibratorIntensity();
-            } else {
-                updateInputDeviceVibrators();
-            }
+        public void onChange(boolean SelfChange) {
+            updateInputDeviceVibrators();
         }
-    }
-
-    private void updateVibratorIntensity() {
-        mVibratorIntensity = CMSettings.Secure.getIntForUser(mContext.getContentResolver(),
-                CMSettings.Secure.VIBRATOR_INTENSITY, mHardware.getVibratorDefaultIntensity(),
-                UserHandle.USER_CURRENT);
-        mHardware.setVibratorIntensity(mVibratorIntensity);
     }
 
     @Override // Binder call
@@ -333,7 +306,6 @@ public class VibratorService extends IVibratorService.Stub
             synchronized (mVibrations) {
                 removeVibrationLocked(token);
                 doCancelVibrateLocked();
-                mCurrentVibration = vib;
                 addToPreviousVibrationsLocked(vib);
                 startVibrationLocked(vib);
             }
@@ -395,7 +367,6 @@ public class VibratorService extends IVibratorService.Stub
                 } else {
                     // A negative repeat means that this pattern is not meant
                     // to repeat. Treat it like a simple vibration.
-                    mCurrentVibration = vib;
                     startVibrationLocked(vib);
                 }
                 addToPreviousVibrationsLocked(vib);
@@ -470,8 +441,7 @@ public class VibratorService extends IVibratorService.Stub
             mCurrentVibration = null;
             return;
         }
-        mCurrentVibration = mVibrations.getFirst();
-        startVibrationLocked(mCurrentVibration);
+        startVibrationLocked(mVibrations.getFirst());
     }
 
     // Lock held on mVibrations
@@ -482,13 +452,20 @@ public class VibratorService extends IVibratorService.Stub
                 return;
             }
 
+            if (vib.mUsageHint == AudioAttributes.USAGE_NOTIFICATION_RINGTONE &&
+                    !shouldVibrateForRingtone()) {
+                return;
+            }
+
             int mode = mAppOpsService.checkAudioOperation(AppOpsManager.OP_VIBRATE,
                     vib.mUsageHint, vib.mUid, vib.mOpPkg);
             if (mode == AppOpsManager.MODE_ALLOWED) {
                 mode = mAppOpsService.startOperation(AppOpsManager.getToken(mAppOpsService),
                     AppOpsManager.OP_VIBRATE, vib.mUid, vib.mOpPkg);
             }
-            if (mode != AppOpsManager.MODE_ALLOWED) {
+            if (mode == AppOpsManager.MODE_ALLOWED) {
+                mCurrentVibration = vib;
+            } else {
                 if (mode == AppOpsManager.MODE_ERRORED) {
                     Slog.w(TAG, "Would be an error: vibrate from uid " + vib.mUid);
                 }
@@ -505,6 +482,18 @@ public class VibratorService extends IVibratorService.Stub
             // called before startNextVibrationLocked or startVibrationLocked.
             mThread = new VibrateThread(vib);
             mThread.start();
+        }
+    }
+
+    private boolean shouldVibrateForRingtone() {
+        AudioManager audioManager = (AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE);
+        int ringerMode = audioManager.getRingerModeInternal();
+        // "Also vibrate for calls" Setting in Sound
+        if (Settings.System.getInt(
+                mContext.getContentResolver(), Settings.System.VIBRATE_WHEN_RINGING, 0) != 0) {
+            return ringerMode != AudioManager.RINGER_MODE_SILENT;
+        } else {
+            return ringerMode == AudioManager.RINGER_MODE_VIBRATE;
         }
     }
 

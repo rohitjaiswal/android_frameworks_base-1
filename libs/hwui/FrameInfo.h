@@ -65,7 +65,7 @@ namespace FrameInfoFlags {
 
 class ANDROID_API UiFrameInfoBuilder {
 public:
-    explicit UiFrameInfoBuilder(int64_t* buffer) : mBuffer(buffer) {
+    UiFrameInfoBuilder(int64_t* buffer) : mBuffer(buffer) {
         memset(mBuffer, 0, UI_THREAD_FRAME_INFO_SIZE * sizeof(int64_t));
     }
 
@@ -116,6 +116,10 @@ public:
 
     void addFlag(int frameInfoFlag) {
         set(FrameInfoIndex::Flags) |= static_cast<uint64_t>(frameInfoFlag);
+    }
+
+    const int64_t* data() const {
+        return mFrameInfo;
     }
 
     inline int64_t operator[](FrameInfoIndex index) const {

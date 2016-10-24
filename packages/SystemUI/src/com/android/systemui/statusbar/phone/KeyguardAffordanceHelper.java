@@ -24,10 +24,10 @@ import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
-import android.view.animation.AnimationUtils;
-import android.view.animation.Interpolator;
 
+import com.android.systemui.Interpolators;
 import com.android.systemui.R;
+import com.android.systemui.classifier.FalsingManager;
 import com.android.systemui.statusbar.FlingAnimationUtils;
 import com.android.systemui.statusbar.KeyguardAffordanceView;
 
@@ -43,13 +43,13 @@ public class KeyguardAffordanceHelper {
     private static final int HINT_CIRCLE_OPEN_DURATION = 500;
 
     private final Context mContext;
+    private final Callback mCallback;
 
     private FlingAnimationUtils mFlingAnimationUtils;
-    private Callback mCallback;
     private VelocityTracker mVelocityTracker;
     private boolean mSwipingInProgress;
     private float mInitialTouchX;
-    private float mInitialTouchYRaw;
+    private float mInitialTouchY;
     private float mTranslation;
     private float mTranslationOnDown;
     private int mTouchSlop;
@@ -59,9 +59,8 @@ public class KeyguardAffordanceHelper {
     private KeyguardAffordanceView mLeftIcon;
     private KeyguardAffordanceView mCenterIcon;
     private KeyguardAffordanceView mRightIcon;
-    private Interpolator mAppearInterpolator;
-    private Interpolator mDisappearInterpolator;
     private Animator mSwipeAnimator;
+    private FalsingManager mFalsingManager;
     private int mMinBackgroundRadius;
     private boolean mMotionCancelled;
     private int mTouchTargetSize;
@@ -105,10 +104,7 @@ public class KeyguardAffordanceHelper {
         mHintGrowAmount =
                 mContext.getResources().getDimensionPixelSize(R.dimen.hint_grow_amount_sideways);
         mFlingAnimationUtils = new FlingAnimationUtils(mContext, 0.4f);
-        mAppearInterpolator = AnimationUtils.loadInterpolator(mContext,
-                android.R.interpolator.linear_out_slow_in);
-        mDisappearInterpolator = AnimationUtils.loadInterpolator(mContext,
-                android.R.interpolator.fast_out_linear_in);
+        mFalsingManager = FalsingManager.getInstance(mContext);
     }
 
     private void initIcons() {
@@ -128,7 +124,7 @@ public class KeyguardAffordanceHelper {
         if (mMotionCancelled && action != MotionEvent.ACTION_DOWN) {
             return false;
         }
-        final float y = event.getRawY();
+        final float y = event.getY();
         final float x = event.getX();
 
         boolean isUp = false;
@@ -146,7 +142,7 @@ public class KeyguardAffordanceHelper {
                 }
                 startSwiping(targetView);
                 mInitialTouchX = x;
-                mInitialTouchYRaw = y;
+                mInitialTouchY = y;
                 mTranslationOnDown = mTranslation;
                 initVelocityTracker();
                 trackMovement(event);
@@ -159,7 +155,7 @@ public class KeyguardAffordanceHelper {
             case MotionEvent.ACTION_MOVE:
                 trackMovement(event);
                 float xDist = x - mInitialTouchX;
-                float yDist = y - mInitialTouchYRaw;
+                float yDist = y - mInitialTouchY;
                 float distance = (float) Math.hypot(xDist, yDist);
                 if (!mTouchSlopExeeded && distance > mTouchSlop) {
                     mTouchSlopExeeded = true;
@@ -211,9 +207,8 @@ public class KeyguardAffordanceHelper {
     }
 
     private boolean isOnIcon(View icon, float x, float y) {
-        int[] location = icon.getLocationOnScreen();
         float iconX = icon.getX() + icon.getWidth() / 2.0f;
-        float iconY = location[1] + icon.getHeight() / 2.0f;
+        float iconY = icon.getY() + icon.getHeight() / 2.0f;
         double distance = Math.hypot(x - iconX, y - iconY);
         return distance <= mTouchTargetSize / 2;
     }
@@ -240,13 +235,6 @@ public class KeyguardAffordanceHelper {
 
     public boolean onInterceptTouchEvent(MotionEvent ev) {
         return false;
-    }
-
-    public boolean isOnLockIcon(MotionEvent event) {
-        final float x = event.getX();
-        final float y = event.getRawY();
-
-        return isOnIcon(mCenterIcon, x, y);
     }
 
     public void startHintAnimation(boolean right,
@@ -277,7 +265,7 @@ public class KeyguardAffordanceHelper {
                 }
             }
         });
-        animator.setInterpolator(mAppearInterpolator);
+        animator.setInterpolator(Interpolators.LINEAR_OUT_SLOW_IN);
         animator.setDuration(HINT_PHASE1_DURATION);
         animator.start();
         mSwipeAnimator = animator;
@@ -297,7 +285,7 @@ public class KeyguardAffordanceHelper {
                 onFinishedListener.run();
             }
         });
-        animator.setInterpolator(mDisappearInterpolator);
+        animator.setInterpolator(Interpolators.FAST_OUT_LINEAR_IN);
         animator.setDuration(HINT_PHASE2_DURATION);
         animator.setStartDelay(HINT_CIRCLE_OPEN_DURATION);
         animator.start();
@@ -330,7 +318,11 @@ public class KeyguardAffordanceHelper {
         float vel = getCurrentVelocity(lastX, lastY);
 
         // We snap back if the current translation is not far enough
-        boolean snapBack = isBelowFalsingThreshold();
+        boolean snapBack = false;
+        if (mCallback.needsAntiFalsing()) {
+            snapBack = snapBack || mFalsingManager.isFalseTouch();
+        }
+        snapBack = snapBack || isBelowFalsingThreshold();
 
         // or if the velocity is in the opposite direction.
         boolean velIsInWrongDirection = vel * mTranslation < 0;
@@ -496,7 +488,7 @@ public class KeyguardAffordanceHelper {
         float aX = mVelocityTracker.getXVelocity();
         float aY = mVelocityTracker.getYVelocity();
         float bX = lastX - mInitialTouchX;
-        float bY = lastY - mInitialTouchYRaw;
+        float bY = lastY - mInitialTouchY;
         float bLen = (float) Math.hypot(bX, bY);
         // Project the velocity onto the distance vector: a * b / |b|
         float projectedVelocity = (aX * bX + aY * bY) / bLen;
@@ -589,5 +581,7 @@ public class KeyguardAffordanceHelper {
          * @return The factor the minimum swipe amount should be multiplied with.
          */
         float getAffordanceFalsingFactor();
+
+        boolean needsAntiFalsing();
     }
 }

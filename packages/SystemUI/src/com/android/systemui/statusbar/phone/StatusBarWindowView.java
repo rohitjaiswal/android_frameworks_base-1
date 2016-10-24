@@ -16,76 +16,158 @@
 
 package com.android.systemui.statusbar.phone;
 
+import android.annotation.ColorInt;
+import android.annotation.DrawableRes;
+import android.annotation.LayoutRes;
 import android.app.StatusBarManager;
-import android.content.ContentResolver;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.content.res.TypedArray;
-import android.database.ContentObserver;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.media.session.MediaSessionLegacyHelper;
 import android.net.Uri;
-import android.os.Handler;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.os.IPowerManager;
 import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.ServiceManager;
-import android.os.PowerManager;
-import android.os.UserHandle;
-import android.provider.Settings;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.ActionMode;
+import android.view.InputQueue;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.MotionEvent;
+import android.view.SurfaceHolder;
 import android.view.View;
 import android.view.ViewConfiguration;
-import android.view.ViewRootImpl;
+import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
+import android.view.Window;
 import android.view.WindowManager;
 import android.view.WindowManagerGlobal;
 import android.widget.FrameLayout;
+
+import com.android.internal.view.FloatingActionMode;
+import com.android.internal.widget.FloatingToolbar;
 import com.android.systemui.R;
+import com.android.systemui.classifier.FalsingManager;
 import com.android.systemui.statusbar.BaseStatusBar;
 import com.android.systemui.statusbar.DragDownHelper;
 import com.android.systemui.statusbar.StatusBarState;
 import com.android.systemui.statusbar.stack.NotificationStackScrollLayout;
+import com.android.systemui.tuner.TunerService;
+
 import cyanogenmod.providers.CMSettings;
 
 
-public class StatusBarWindowView extends FrameLayout {
+public class StatusBarWindowView extends FrameLayout implements TunerService.Tunable {
     public static final String TAG = "StatusBarWindowView";
     public static final boolean DEBUG = BaseStatusBar.DEBUG;
+
+    private static final String DOUBLE_TAP_SLEEP_GESTURE =
+            "cmsystem:" + CMSettings.System.DOUBLE_TAP_SLEEP_GESTURE;
 
     private DragDownHelper mDragDownHelper;
     private NotificationStackScrollLayout mStackScrollLayout;
     private NotificationPanelView mNotificationPanel;
     private View mBrightnessMirror;
 
+    private int mRightInset = 0;
+
     private PhoneStatusBar mService;
     private final Paint mTransparentSrcPaint = new Paint();
+    private FalsingManager mFalsingManager;
+
+    // Implements the floating action mode for TextView's Cut/Copy/Past menu. Normally provided by
+    // DecorView, but since this is a special window we have to roll our own.
+    private View mFloatingActionModeOriginatingView;
+    private ActionMode mFloatingActionMode;
+    private FloatingToolbar mFloatingToolbar;
+    private ViewTreeObserver.OnPreDrawListener mFloatingToolbarPreDrawListener;
 
     private int mStatusBarHeaderHeight;
 
-    private boolean mDozeWakeupDoubleTap;
-    private GestureDetector mDozeWakeupDoubleTapGesture;
     private boolean mDoubleTapToSleepEnabled;
-    private boolean mDoubleTapToSleepLockScreen;
     private GestureDetector mDoubleTapGesture;
-    private Handler mHandler = new Handler();
-    private SettingsObserver mSettingsObserver;
 
     public StatusBarWindowView(Context context, AttributeSet attrs) {
         super(context, attrs);
         setMotionEventSplittingEnabled(false);
         mTransparentSrcPaint.setColor(0);
         mTransparentSrcPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC));
+        mFalsingManager = FalsingManager.getInstance(context);
         mStatusBarHeaderHeight = context
                 .getResources().getDimensionPixelSize(R.dimen.status_bar_header_height);
-        mSettingsObserver = new SettingsObserver(mHandler);
+    }
+
+    @Override
+    protected boolean fitSystemWindows(Rect insets) {
+        if (getFitsSystemWindows()) {
+            boolean paddingChanged = insets.left != getPaddingLeft()
+                    || insets.top != getPaddingTop()
+                    || insets.bottom != getPaddingBottom();
+
+            // Super-special right inset handling, because scrims and backdrop need to ignore it.
+            if (insets.right != mRightInset) {
+                mRightInset = insets.right;
+                applyMargins();
+            }
+            // Drop top inset, apply left inset and pass through bottom inset.
+            if (paddingChanged) {
+                setPadding(insets.left, 0, 0, 0);
+            }
+            insets.left = 0;
+            insets.top = 0;
+            insets.right = 0;
+        } else {
+            if (mRightInset != 0) {
+                mRightInset = 0;
+                applyMargins();
+            }
+            boolean changed = getPaddingLeft() != 0
+                    || getPaddingRight() != 0
+                    || getPaddingTop() != 0
+                    || getPaddingBottom() != 0;
+            if (changed) {
+                setPadding(0, 0, 0, 0);
+            }
+            insets.top = 0;
+        }
+        return false;
+    }
+
+    private void applyMargins() {
+        final int N = getChildCount();
+        for (int i = 0; i < N; i++) {
+            View child = getChildAt(i);
+            if (child.getLayoutParams() instanceof LayoutParams) {
+                LayoutParams lp = (LayoutParams) child.getLayoutParams();
+                if (!lp.ignoreRightInset && lp.rightMargin != mRightInset) {
+                    lp.rightMargin = mRightInset;
+                    child.requestLayout();
+                }
+            }
+        }
+    }
+
+    @Override
+    public FrameLayout.LayoutParams generateLayoutParams(AttributeSet attrs) {
+        return new LayoutParams(getContext(), attrs);
+    }
+
+    @Override
+    protected FrameLayout.LayoutParams generateDefaultLayoutParams() {
+        return new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
     }
 
     @Override
@@ -106,7 +188,7 @@ public class StatusBarWindowView extends FrameLayout {
     protected void onAttachedToWindow () {
         super.onAttachedToWindow();
 
-        mSettingsObserver.observe();
+        TunerService.get(mContext).addTunable(this, DOUBLE_TAP_SLEEP_GESTURE);
         mDoubleTapGesture = new GestureDetector(mContext, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
@@ -121,33 +203,15 @@ public class StatusBarWindowView extends FrameLayout {
             }
         });
 
-        mDozeWakeupDoubleTapGesture = new GestureDetector(mContext,
-                new GestureDetector.SimpleOnGestureListener() {
-            @Override
-            public boolean onDoubleTap(MotionEvent e) {
-                mService.wakeUpIfDozing(e.getEventTime(), e);
-                return true;
-            }
-        });
-
-        // We really need to be able to animate while window animations are going on
-        // so that activities may be started asynchronously from panel animations
-        final ViewRootImpl root = getViewRootImpl();
-        if (root != null) {
-            root.setDrawDuringWindowsAnimating(true);
-        }
-
         // We need to ensure that our window doesn't suffer from overdraw which would normally
         // occur if our window is translucent. Since we are drawing the whole window anyway with
         // the scrim, we don't need the window to be cleared in the beginning.
         if (mService.isScrimSrcModeEnabled()) {
-            if (getLayoutParams() instanceof WindowManager.LayoutParams) {
-                WindowManager.LayoutParams lp = (WindowManager.LayoutParams) getLayoutParams();
-                IBinder windowToken = getWindowToken();
-                lp.token = windowToken;
-                setLayoutParams(lp);
-                WindowManagerGlobal.getInstance().changeCanvasOpacity(windowToken, true);
-            }
+            IBinder windowToken = getWindowToken();
+            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) getLayoutParams();
+            lp.token = windowToken;
+            setLayoutParams(lp);
+            WindowManagerGlobal.getInstance().changeCanvasOpacity(windowToken, true);
             setWillNotDraw(false);
         } else {
             setWillNotDraw(!DEBUG);
@@ -157,17 +221,7 @@ public class StatusBarWindowView extends FrameLayout {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        mSettingsObserver.unobserve();
-    }
-
-    @Override
-    protected boolean fitSystemWindows(Rect insets) {
-        insets.bottom = 0;
-        insets.top = 0;
-        insets.right = 0;
-        insets.left = 0;
-        super.fitSystemWindows(insets);
-        return false;
+        TunerService.get(mContext).removeTunable(this);
     }
 
     @Override
@@ -204,6 +258,7 @@ public class StatusBarWindowView extends FrameLayout {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
+        mFalsingManager.onTouchEvent(ev, getWidth(), getHeight());
         if (mBrightnessMirror != null && mBrightnessMirror.getVisibility() == VISIBLE) {
             // Disallow new pointers while the brightness mirror is visible. This is so that you
             // can't touch anything other than the brightness slider while the mirror is showing
@@ -212,6 +267,10 @@ public class StatusBarWindowView extends FrameLayout {
                 return false;
             }
         }
+        if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            mStackScrollLayout.closeControlsIfOutsideTouch(ev);
+        }
+
         return super.dispatchTouchEvent(ev);
     }
 
@@ -223,28 +282,14 @@ public class StatusBarWindowView extends FrameLayout {
             if (DEBUG) Log.w(TAG, "logging double tap gesture");
             mDoubleTapGesture.onTouchEvent(ev);
         }
-        final int h = getMeasuredHeight();
-        if (mDoubleTapToSleepLockScreen &&
-                mService.getBarState() == StatusBarState.KEYGUARD
-                && (ev.getY() < (h / 3) ||
-                ev.getY() > (h - mStatusBarHeaderHeight))) {
-            if (DEBUG) Log.w(TAG, "logging lock screen double tap gesture");
-            mDoubleTapGesture.onTouchEvent(ev);
-        }
         if (mNotificationPanel.isFullyExpanded()
                 && mStackScrollLayout.getVisibility() == View.VISIBLE
                 && mService.getBarState() == StatusBarState.KEYGUARD
                 && !mService.isBouncerShowing()) {
-            if (!mDozeWakeupDoubleTap || (mDozeWakeupDoubleTap && !mService.isDozing())) {
-                intercept = mDragDownHelper.onInterceptTouchEvent(ev);
-            }
+            intercept = mDragDownHelper.onInterceptTouchEvent(ev);
             // wake up on a touch down event, if dozing
-            if (mDozeWakeupDoubleTap) {
-                mDozeWakeupDoubleTapGesture.onTouchEvent(ev);
-            } else {
-                if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                    mService.wakeUpIfDozing(ev.getEventTime(), ev);
-                }
+            if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                mService.wakeUpIfDozing(ev.getEventTime(), ev);
             }
         }
         if (!intercept) {
@@ -277,7 +322,7 @@ public class StatusBarWindowView extends FrameLayout {
     }
 
     @Override
-    protected void onDraw(Canvas canvas) {
+    public void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         if (mService.isScrimSrcModeEnabled()) {
             // We need to ensure that our window is always drawn fully even when we have paddings,
@@ -314,60 +359,365 @@ public class StatusBarWindowView extends FrameLayout {
         }
     }
 
-    public void addContent(View content) {
-        addView(content);
-        mStackScrollLayout = (NotificationStackScrollLayout) content.findViewById(
-                R.id.notification_stack_scroller);
-        mNotificationPanel = (NotificationPanelView) content.findViewById(R.id.notification_panel);
-        mDragDownHelper = new DragDownHelper(getContext(), this, mStackScrollLayout, mService);
-        mBrightnessMirror = content.findViewById(R.id.brightness_mirror);
+    public class LayoutParams extends FrameLayout.LayoutParams {
 
-    }
+        public boolean ignoreRightInset;
 
-    public void removeContent(View content) {
-        removeView(content);
-    }
-
-    class SettingsObserver extends ContentObserver {
-        SettingsObserver(Handler handler) {
-            super(handler);
+        public LayoutParams(int width, int height) {
+            super(width, height);
         }
 
-        void observe() {
-            ContentResolver resolver = mContext.getContentResolver();
-            resolver.registerContentObserver(CMSettings.System.getUriFor(
-                    CMSettings.System.DOUBLE_TAP_SLEEP_GESTURE), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.DOUBLE_TAP_SLEEP_LOCK_SCREEN), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.DOZE_WAKEUP_DOUBLETAP), false, this);
-            update();
+        public LayoutParams(Context c, AttributeSet attrs) {
+            super(c, attrs);
+
+            TypedArray a = c.obtainStyledAttributes(attrs, R.styleable.StatusBarWindowView_Layout);
+            ignoreRightInset = a.getBoolean(
+                    R.styleable.StatusBarWindowView_Layout_ignoreRightInset, false);
+            a.recycle();
+        }
+    }
+
+    @Override
+    public ActionMode startActionModeForChild(View originalView, ActionMode.Callback callback,
+            int type) {
+        if (type == ActionMode.TYPE_FLOATING) {
+            return startActionMode(originalView, callback, type);
+        }
+        return super.startActionModeForChild(originalView, callback, type);
+    }
+
+    private ActionMode createFloatingActionMode(
+            View originatingView, ActionMode.Callback2 callback) {
+        if (mFloatingActionMode != null) {
+            mFloatingActionMode.finish();
+        }
+        cleanupFloatingActionModeViews();
+        final FloatingActionMode mode =
+                new FloatingActionMode(mContext, callback, originatingView);
+        mFloatingActionModeOriginatingView = originatingView;
+        mFloatingToolbarPreDrawListener =
+                new ViewTreeObserver.OnPreDrawListener() {
+                    @Override
+                    public boolean onPreDraw() {
+                        mode.updateViewLocationInWindow();
+                        return true;
+                    }
+                };
+        return mode;
+    }
+
+    private void setHandledFloatingActionMode(ActionMode mode) {
+        mFloatingActionMode = mode;
+        mFloatingToolbar = new FloatingToolbar(mContext, mFakeWindow);
+        ((FloatingActionMode) mFloatingActionMode).setFloatingToolbar(mFloatingToolbar);
+        mFloatingActionMode.invalidate();  // Will show the floating toolbar if necessary.
+        mFloatingActionModeOriginatingView.getViewTreeObserver()
+                .addOnPreDrawListener(mFloatingToolbarPreDrawListener);
+    }
+
+    private void cleanupFloatingActionModeViews() {
+        if (mFloatingToolbar != null) {
+            mFloatingToolbar.dismiss();
+            mFloatingToolbar = null;
+        }
+        if (mFloatingActionModeOriginatingView != null) {
+            if (mFloatingToolbarPreDrawListener != null) {
+                mFloatingActionModeOriginatingView.getViewTreeObserver()
+                        .removeOnPreDrawListener(mFloatingToolbarPreDrawListener);
+                mFloatingToolbarPreDrawListener = null;
+            }
+            mFloatingActionModeOriginatingView = null;
+        }
+    }
+
+    private ActionMode startActionMode(
+            View originatingView, ActionMode.Callback callback, int type) {
+        ActionMode.Callback2 wrappedCallback = new ActionModeCallback2Wrapper(callback);
+        ActionMode mode = createFloatingActionMode(originatingView, wrappedCallback);
+        if (mode != null && wrappedCallback.onCreateActionMode(mode, mode.getMenu())) {
+            setHandledFloatingActionMode(mode);
+        } else {
+            mode = null;
+        }
+        return mode;
+    }
+
+    private class ActionModeCallback2Wrapper extends ActionMode.Callback2 {
+        private final ActionMode.Callback mWrapped;
+
+        public ActionModeCallback2Wrapper(ActionMode.Callback wrapped) {
+            mWrapped = wrapped;
         }
 
-        void unobserve() {
-            ContentResolver resolver = mContext.getContentResolver();
-            resolver.unregisterContentObserver(this);
+        public boolean onCreateActionMode(ActionMode mode, Menu menu) {
+            return mWrapped.onCreateActionMode(mode, menu);
+        }
+
+        public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
+            requestFitSystemWindows();
+            return mWrapped.onPrepareActionMode(mode, menu);
+        }
+
+        public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
+            return mWrapped.onActionItemClicked(mode, item);
+        }
+
+        public void onDestroyActionMode(ActionMode mode) {
+            mWrapped.onDestroyActionMode(mode);
+            if (mode == mFloatingActionMode) {
+                cleanupFloatingActionModeViews();
+                mFloatingActionMode = null;
+            }
+            requestFitSystemWindows();
         }
 
         @Override
-        public void onChange(boolean selfChange) {
-            update();
+        public void onGetContentRect(ActionMode mode, View view, Rect outRect) {
+            if (mWrapped instanceof ActionMode.Callback2) {
+                ((ActionMode.Callback2) mWrapped).onGetContentRect(mode, view, outRect);
+            } else {
+                super.onGetContentRect(mode, view, outRect);
+            }
+        }
+    }
+
+    /**
+     * Minimal window to satisfy FloatingToolbar.
+     */
+    private Window mFakeWindow = new Window(mContext) {
+        @Override
+        public void takeSurface(SurfaceHolder.Callback2 callback) {
         }
 
         @Override
-        public void onChange(boolean selfChange, Uri uri) {
-            update();
+        public void takeInputQueue(InputQueue.Callback callback) {
         }
 
-        public void update() {
-            ContentResolver resolver = mContext.getContentResolver();
-            mDoubleTapToSleepEnabled = CMSettings.System
-                    .getInt(resolver, CMSettings.System.DOUBLE_TAP_SLEEP_GESTURE, 1) == 1;
-            mDoubleTapToSleepLockScreen = Settings.System.getIntForUser(resolver,
-                    Settings.System.DOUBLE_TAP_SLEEP_LOCK_SCREEN, 0, UserHandle.USER_CURRENT) == 1;
-            mDozeWakeupDoubleTap = Settings.System.getInt(
-                    resolver, Settings.System.DOZE_WAKEUP_DOUBLETAP, 0) == 1;
+        @Override
+        public boolean isFloating() {
+            return false;
         }
+
+        @Override
+        public void alwaysReadCloseOnTouchAttr() {
+        }
+
+        @Override
+        public void setContentView(@LayoutRes int layoutResID) {
+        }
+
+        @Override
+        public void setContentView(View view) {
+        }
+
+        @Override
+        public void setContentView(View view, ViewGroup.LayoutParams params) {
+        }
+
+        @Override
+        public void addContentView(View view, ViewGroup.LayoutParams params) {
+        }
+
+        @Override
+        public void clearContentView() {
+        }
+
+        @Override
+        public View getCurrentFocus() {
+            return null;
+        }
+
+        @Override
+        public LayoutInflater getLayoutInflater() {
+            return null;
+        }
+
+        @Override
+        public void setTitle(CharSequence title) {
+        }
+
+        @Override
+        public void setTitleColor(@ColorInt int textColor) {
+        }
+
+        @Override
+        public void openPanel(int featureId, KeyEvent event) {
+        }
+
+        @Override
+        public void closePanel(int featureId) {
+        }
+
+        @Override
+        public void togglePanel(int featureId, KeyEvent event) {
+        }
+
+        @Override
+        public void invalidatePanelMenu(int featureId) {
+        }
+
+        @Override
+        public boolean performPanelShortcut(int featureId, int keyCode, KeyEvent event, int flags) {
+            return false;
+        }
+
+        @Override
+        public boolean performPanelIdentifierAction(int featureId, int id, int flags) {
+            return false;
+        }
+
+        @Override
+        public void closeAllPanels() {
+        }
+
+        @Override
+        public boolean performContextMenuIdentifierAction(int id, int flags) {
+            return false;
+        }
+
+        @Override
+        public void onConfigurationChanged(Configuration newConfig) {
+        }
+
+        @Override
+        public void setBackgroundDrawable(Drawable drawable) {
+        }
+
+        @Override
+        public void setFeatureDrawableResource(int featureId, @DrawableRes int resId) {
+        }
+
+        @Override
+        public void setFeatureDrawableUri(int featureId, Uri uri) {
+        }
+
+        @Override
+        public void setFeatureDrawable(int featureId, Drawable drawable) {
+        }
+
+        @Override
+        public void setFeatureDrawableAlpha(int featureId, int alpha) {
+        }
+
+        @Override
+        public void setFeatureInt(int featureId, int value) {
+        }
+
+        @Override
+        public void takeKeyEvents(boolean get) {
+        }
+
+        @Override
+        public boolean superDispatchKeyEvent(KeyEvent event) {
+            return false;
+        }
+
+        @Override
+        public boolean superDispatchKeyShortcutEvent(KeyEvent event) {
+            return false;
+        }
+
+        @Override
+        public boolean superDispatchTouchEvent(MotionEvent event) {
+            return false;
+        }
+
+        @Override
+        public boolean superDispatchTrackballEvent(MotionEvent event) {
+            return false;
+        }
+
+        @Override
+        public boolean superDispatchGenericMotionEvent(MotionEvent event) {
+            return false;
+        }
+
+        @Override
+        public View getDecorView() {
+            return StatusBarWindowView.this;
+        }
+
+        @Override
+        public View peekDecorView() {
+            return null;
+        }
+
+        @Override
+        public Bundle saveHierarchyState() {
+            return null;
+        }
+
+        @Override
+        public void restoreHierarchyState(Bundle savedInstanceState) {
+        }
+
+        @Override
+        protected void onActive() {
+        }
+
+        @Override
+        public void setChildDrawable(int featureId, Drawable drawable) {
+        }
+
+        @Override
+        public void setChildInt(int featureId, int value) {
+        }
+
+        @Override
+        public boolean isShortcutKey(int keyCode, KeyEvent event) {
+            return false;
+        }
+
+        @Override
+        public void setVolumeControlStream(int streamType) {
+        }
+
+        @Override
+        public int getVolumeControlStream() {
+            return 0;
+        }
+
+        @Override
+        public int getStatusBarColor() {
+            return 0;
+        }
+
+        @Override
+        public void setStatusBarColor(@ColorInt int color) {
+        }
+
+        @Override
+        public int getNavigationBarColor() {
+            return 0;
+        }
+
+        @Override
+        public void setNavigationBarColor(@ColorInt int color) {
+        }
+
+        @Override
+        public void setDecorCaptionShade(int decorCaptionShade) {
+        }
+
+        @Override
+        public void setResizingCaptionDrawable(Drawable drawable) {
+        }
+
+        @Override
+        public void onMultiWindowModeChanged() {
+        }
+
+        @Override
+        public void reportActivityRelaunched() {
+        }
+    };
+
+    @Override
+    public void onTuningChanged(String key, String newValue) {
+        if (!DOUBLE_TAP_SLEEP_GESTURE.equals(key)) {
+            return;
+        }
+        mDoubleTapToSleepEnabled = newValue == null || Integer.parseInt(newValue) == 1;
     }
 }
 

@@ -59,6 +59,9 @@ public class PhoneConstants {
     public static final int PHONE_TYPE_SIP = RILConstants.SIP_PHONE;
     public static final int PHONE_TYPE_THIRD_PARTY = RILConstants.THIRD_PARTY_PHONE;
     public static final int PHONE_TYPE_IMS = RILConstants.IMS_PHONE;
+    // Currently this is used only to differentiate CDMA and CDMALTE Phone in GsmCdma* files. For
+    // anything outside of that, a cdma + lte phone is still CDMA_PHONE
+    public static final int PHONE_TYPE_CDMA_LTE = RILConstants.CDMA_LTE_PHONE;
 
     // Modes for LTE_ON_CDMA
     public static final int LTE_ON_CDMA_UNKNOWN = RILConstants.LTE_ON_CDMA_UNKNOWN;
@@ -184,8 +187,7 @@ public class PhoneConstants {
     public enum CardUnavailableReason {
         REASON_CARD_REMOVED,
         REASON_RADIO_UNAVAILABLE,
-        REASON_SIM_REFRESH_RESET,
-        REASON_APM_SIM_POWER_DOWN
+        REASON_SIM_REFRESH_RESET
     };
 
     // Initial MTU value.
@@ -201,6 +203,9 @@ public class PhoneConstants {
     public static final int AUDIO_OUTPUT_DISABLE_SPEAKER = 1;
     public static final int AUDIO_OUTPUT_DEFAULT = AUDIO_OUTPUT_ENABLE_SPEAKER;
 
-    /** Copied from ContactsCommon. See comments in ContactsCommon app for more detail. */
-    public static final String EXTRA_CALL_ORIGIN = "com.android.phone.CALL_ORIGIN";
+    // authContext (parameter P2) when doing SIM challenge,
+    // per 3GPP TS 31.102 (Section 7.1.2)
+    public static final int AUTH_CONTEXT_EAP_SIM = 128;
+    public static final int AUTH_CONTEXT_EAP_AKA = 129;
+    public static final int AUTH_CONTEXT_UNDEFINED = -1;
 }

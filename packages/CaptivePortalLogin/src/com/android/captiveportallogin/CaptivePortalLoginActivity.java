@@ -20,10 +20,8 @@ import android.app.Activity;
 import android.app.LoadedApk;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.net.CaptivePortal;
-import android.graphics.drawable.ColorDrawable;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.Network;
@@ -34,7 +32,6 @@ import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.text.TextUtils;
 import android.util.ArrayMap;
 import android.util.Log;
 import android.util.TypedValue;
@@ -59,12 +56,6 @@ import java.util.Random;
 
 public class CaptivePortalLoginActivity extends Activity {
     private static final String TAG = "CaptivePortalLogin";
-    private static final String DEFAULT_SERVER = "connectivitycheck.gstatic.com";
-
-    private static final String EXTRA_STATUS_BAR_COLOR = "status_bar_color";
-    private static final String EXTRA_ACTION_BAR_COLOR = "action_bar_color";
-    private static final String EXTRA_PROGRESS_COLOR = "progress_bar_color";
-
     private static final int SOCKET_TIMEOUT_MS = 10000;
 
     private enum Result { DISMISSED, UNWANTED, WANTED_AS_IS };
@@ -76,40 +67,22 @@ public class CaptivePortalLoginActivity extends Activity {
     private ConnectivityManager mCm;
     private boolean mLaunchBrowser = false;
     private MyWebViewClient mWebViewClient;
-    private String mResponseToken;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        String server = Settings.Global.getString(getContentResolver(), "captive_portal_server");
-        if (server == null) server = DEFAULT_SERVER;
         mCm = ConnectivityManager.from(this);
+        String url = getIntent().getStringExtra(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_URL);
+        if (url == null) url = mCm.getCaptivePortalServerUrl();
         try {
-            mURL = new URL("http", server, "/generate_204");
+            mURL = new URL(url);
         } catch (MalformedURLException e) {
             // System misconfigured, bail out in a way that at least provides network access.
-            Log.e(TAG, "Invalid captive portal URL, server=" + server);
-            setResult(Activity.RESULT_CANCELED);
+            Log.e(TAG, "Invalid captive portal URL, url=" + url);
             done(Result.WANTED_AS_IS);
         }
-        mResponseToken = getIntent().getStringExtra(Intent.EXTRA_TEXT);
         mNetwork = getIntent().getParcelableExtra(ConnectivityManager.EXTRA_NETWORK);
         mCaptivePortal = getIntent().getParcelableExtra(ConnectivityManager.EXTRA_CAPTIVE_PORTAL);
-
-        final Intent intent = getIntent();
-        if (intent.hasExtra(EXTRA_STATUS_BAR_COLOR)) {
-            int color = intent.getIntExtra(EXTRA_STATUS_BAR_COLOR, -1);
-            if (color != -1) {
-                getWindow().setStatusBarColor(color);
-            }
-        }
-        if (intent.hasExtra(EXTRA_ACTION_BAR_COLOR)) {
-            int color = intent.getIntExtra(EXTRA_ACTION_BAR_COLOR, -1);
-            if (color != -1) {
-                getActionBar().setBackgroundDrawable(new ColorDrawable(color));
-            }
-        }
 
         // Also initializes proxy system properties.
         mCm.bindProcessToNetwork(mNetwork);
@@ -119,14 +92,6 @@ public class CaptivePortalLoginActivity extends Activity {
         setContentView(R.layout.activity_captive_portal_login);
 
         getActionBar().setDisplayShowHomeEnabled(false);
-
-        ProgressBar myProgressBar = (ProgressBar) findViewById(R.id.progress_bar);
-        if (intent.hasExtra(EXTRA_PROGRESS_COLOR)) {
-            int color = intent.getIntExtra(EXTRA_PROGRESS_COLOR, -1);
-            if (color != -1) {
-                myProgressBar.setProgressTintList(ColorStateList.valueOf(color));
-            }
-        }
 
         // Exit app if Network disappears.
         final NetworkCapabilities networkCapabilities = mCm.getNetworkCapabilities(mNetwork);
@@ -198,9 +163,6 @@ public class CaptivePortalLoginActivity extends Activity {
                 mCaptivePortal.useNetwork();
                 break;
         }
-        Intent intent = new Intent();
-        intent.putExtra(Intent.EXTRA_TEXT, mResponseToken);
-        setResult(Activity.RESULT_OK, intent);
         finish();
     }
 
@@ -334,11 +296,6 @@ public class CaptivePortalLoginActivity extends Activity {
             } else if (mPagesLoaded == 2) {
                 // Prevent going back to empty first page.
                 view.clearHistory();
-            } else {
-                if (TextUtils.isEmpty(view.getUrl()) || view.getUrl().contains("text/html")) {
-                    setResult(Activity.RESULT_CANCELED);
-                    finish();
-                }
             }
             testForCaptivePortal();
         }

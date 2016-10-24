@@ -35,7 +35,7 @@ import android.view.ViewConfiguration;
 import com.android.systemui.R;
 import com.android.systemui.qs.QSTile;
 import com.android.systemui.qs.QSTileView;
-import com.android.internal.logging.MetricsLogger;
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 
 /** Quick settings tile: Music **/
 public class MusicTile extends QSTile<QSTile.BooleanState> {
@@ -63,12 +63,7 @@ public class MusicTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
-    public int getMetricsCategory() {
-        return MetricsLogger.DISPLAY;
-    }
-
-    @Override
-    protected BooleanState newTileState() {
+    public BooleanState newTileState() {
         return new BooleanState();
     }
 
@@ -89,20 +84,28 @@ public class MusicTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
-    protected void handleSecondaryClick() {
-        sendMediaButtonClick(KeyEvent.KEYCODE_MEDIA_NEXT);
-        refreshState();
-    }
-
-    @Override
     public void handleLongClick() {
         sendMediaButtonClick(KeyEvent.KEYCODE_MEDIA_NEXT);
         refreshState();
     }
 
     @Override
+    public Intent getLongClickIntent() {
+        return null;
+    }
+
+    @Override
+    public CharSequence getTileLabel() {
+        return mContext.getString(R.string.quick_settings_music_label);
+    }
+
+    @Override
+    public int getMetricsCategory() {
+        return MetricsEvent.QUICK_SETTINGS;
+    }
+
+    @Override
     protected void handleUpdateState(BooleanState state, Object arg) {
-        state.visible = true;
         if (mActive) {
             state.icon = ResourceIcon.get(R.drawable.ic_qs_media_pause);
             state.label = mMetadata.trackTitle != null

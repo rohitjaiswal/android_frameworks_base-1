@@ -49,7 +49,7 @@ public class GpsNetInitiatedHandler {
 
     private static final String TAG = "GpsNetInitiatedHandler";
 
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
     private static final boolean VERBOSE = false;
 
     // NI verify activity for bringing up UI (not used yet)
@@ -62,7 +62,7 @@ public class GpsNetInitiatedHandler {
     public static final String NI_INTENT_KEY_TIMEOUT = "timeout";
     public static final String NI_INTENT_KEY_DEFAULT_RESPONSE = "default_resp";
 
-    // the extra command to send NI response to GpsLocationProvider
+    // the extra command to send NI response to GnssLocationProvider
     public static final String NI_RESPONSE_EXTRA_CMD = "send_ni_response";
 
     // the extra command parameter names in the Bundle

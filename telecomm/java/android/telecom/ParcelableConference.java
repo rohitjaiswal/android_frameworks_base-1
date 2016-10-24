@@ -135,7 +135,6 @@ public final class ParcelableConference implements Parcelable {
             PhoneAccountHandle phoneAccount = source.readParcelable(classLoader);
             int state = source.readInt();
             int capabilities = source.readInt();
-            int properties = source.readInt();
             List<String> connectionIds = new ArrayList<>(2);
             source.readList(connectionIds, classLoader);
             long connectTimeMillis = source.readLong();
@@ -144,10 +143,11 @@ public final class ParcelableConference implements Parcelable {
             int videoState = source.readInt();
             StatusHints statusHints = source.readParcelable(classLoader);
             Bundle extras = source.readBundle(classLoader);
+            int properties = source.readInt();
 
             return new ParcelableConference(phoneAccount, state, capabilities, properties,
-                    connectionIds, videoCallProvider, videoState,
-                    connectTimeMillis, statusHints, extras);
+                    connectionIds, videoCallProvider, videoState, connectTimeMillis, statusHints,
+                    extras);
         }
 
         @Override
@@ -168,7 +168,6 @@ public final class ParcelableConference implements Parcelable {
         destination.writeParcelable(mPhoneAccount, 0);
         destination.writeInt(mState);
         destination.writeInt(mConnectionCapabilities);
-        destination.writeInt(mConnectionProperties);
         destination.writeList(mConnectionIds);
         destination.writeLong(mConnectTimeMillis);
         destination.writeStrongBinder(
@@ -176,5 +175,6 @@ public final class ParcelableConference implements Parcelable {
         destination.writeInt(mVideoState);
         destination.writeParcelable(mStatusHints, 0);
         destination.writeBundle(mExtras);
+        destination.writeInt(mConnectionProperties);
     }
 }

@@ -97,12 +97,6 @@ interface INetworkManagementService
     void setInterfaceIpv6NdOffload(String iface, boolean enable);
 
     /**
-     * Retrieves the network routes currently configured on the specified
-     * interface
-     */
-    RouteInfo[] getRoutes(String iface);
-
-    /**
      * Add the specified route to the interface.
      */
     void addRoute(int netId, in RouteInfo route);
@@ -234,9 +228,19 @@ interface INetworkManagementService
     void startAccessPoint(in WifiConfiguration wifiConfig, String iface);
 
     /**
+     * Start Wigig Access Point
+     */
+    void startWigigAccessPoint();
+
+    /**
      * Stop Wifi Access Point
      */
     void stopAccessPoint(String iface);
+
+    /**
+     * Stop Wigig Access Point
+     */
+    void stopWigigAccessPoint();
 
     /**
      * Set Access Point config
@@ -299,7 +303,9 @@ interface INetworkManagementService
     /**
      * Control network activity of a UID over interfaces with a quota limit.
      */
-    void setUidNetworkRules(int uid, boolean rejectOnQuotaInterfaces);
+    void setUidMeteredNetworkBlacklist(int uid, boolean enable);
+    void setUidMeteredNetworkWhitelist(int uid, boolean enable);
+    boolean setDataSaverModeEnabled(boolean enable);
 
     void setUidCleartextNetworkPolicy(int uid, int policy);
 
@@ -328,14 +334,14 @@ interface INetworkManagementService
     void removeIdleTimer(String iface);
 
     /**
+     * Configure name servers, search paths, and resolver parameters for the given network.
+     */
+    void setDnsConfigurationForNetwork(int netId, in String[] servers, String domains);
+
+    /**
      * Bind name servers to a network in the DNS resolver.
      */
     void setDnsServersForNetwork(int netId, in String[] servers, String domains);
-
-    /**
-     * Flush the DNS cache associated with the specified network.
-     */
-    void flushNetworkDnsCache(int netId);
 
     void setFirewallEnabled(boolean enabled);
     boolean isFirewallEnabled();
@@ -441,6 +447,14 @@ interface INetworkManagementService
     void addInterfaceToLocalNetwork(String iface, in List<RouteInfo> routes);
     void removeInterfaceFromLocalNetwork(String iface);
 
-    void restrictAppOnData(int uid, boolean restrict);
-    void restrictAppOnWlan(int uid, boolean restrict);
+    void setAllowOnlyVpnForUids(boolean enable, in UidRange[] uidRanges);
+    /**
+     * Create SoftAp Interface
+     */
+    void createSoftApInterface(String wlanIface);
+
+     /**
+     * Delete SoftAp Interface
+     */
+    void deleteSoftApInterface(String wlanIface);
 }

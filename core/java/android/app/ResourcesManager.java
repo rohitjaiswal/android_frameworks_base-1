@@ -18,38 +18,34 @@ package android.app;
 
 import static android.app.ActivityThread.DEBUG_CONFIGURATION;
 
-import android.content.Context;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.pm.ActivityInfo;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.IPackageManager;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageItemInfo;
-import android.content.pm.PackageManager;
-import android.content.pm.ThemeUtils;
 import android.content.res.AssetManager;
 import android.content.res.CompatibilityInfo;
 import android.content.res.Configuration;
-import android.content.res.ThemeConfig;
 import android.content.res.Resources;
+import android.content.res.ResourcesImpl;
 import android.content.res.ResourcesKey;
 import android.hardware.display.DisplayManagerGlobal;
 import android.os.IBinder;
-import android.os.RemoteException;
-import android.os.ServiceManager;
-import android.os.UserHandle;
-import android.text.TextUtils;
+import android.os.Trace;
 import android.util.ArrayMap;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.Pair;
 import android.util.Slog;
-import android.util.SparseArray;
 import android.view.Display;
 import android.view.DisplayAdjustments;
 
+import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.util.ArrayUtils;
+
 import java.lang.ref.WeakReference;
-import java.util.List;
-import java.util.Locale;
+import java.util.ArrayList;
+import java.util.Objects;
+import java.util.WeakHashMap;
+import java.util.function.Predicate;
 
 /** @hide */
 public class ResourcesManager {
@@ -57,21 +53,61 @@ public class ResourcesManager {
     private static final boolean DEBUG = false;
 
     private static ResourcesManager sResourcesManager;
-    private final ArrayMap<ResourcesKey, WeakReference<Resources> > mActiveResources =
-            new ArrayMap<>();
-    private final ArrayMap<Pair<Integer, DisplayAdjustments>, WeakReference<Display>> mDisplays =
-            new ArrayMap<>();
-
-    CompatibilityInfo mResCompatibilityInfo;
-    static IPackageManager sPackageManager;
-
-    Configuration mResConfiguration;
 
     /**
-     * Number of default assets attached to a Resource object's AssetManager
-     * This currently includes framework and cmsdk resources
+     * Predicate that returns true if a WeakReference is gc'ed.
      */
-    private static final int NUM_DEFAULT_ASSETS = 2;
+    private static final Predicate<WeakReference<Resources>> sEmptyReferencePredicate =
+            new Predicate<WeakReference<Resources>>() {
+                @Override
+                public boolean test(WeakReference<Resources> weakRef) {
+                    return weakRef == null || weakRef.get() == null;
+                }
+            };
+
+    /**
+     * The global compatibility settings.
+     */
+    private CompatibilityInfo mResCompatibilityInfo;
+
+    /**
+     * The global configuration upon which all Resources are based. Multi-window Resources
+     * apply their overrides to this configuration.
+     */
+    private final Configuration mResConfiguration = new Configuration();
+
+    /**
+     * A mapping of ResourceImpls and their configurations. These are heavy weight objects
+     * which should be reused as much as possible.
+     */
+    private final ArrayMap<ResourcesKey, WeakReference<ResourcesImpl>> mResourceImpls =
+            new ArrayMap<>();
+
+    /**
+     * A list of Resource references that can be reused.
+     */
+    private final ArrayList<WeakReference<Resources>> mResourceReferences = new ArrayList<>();
+
+    /**
+     * Resources and base configuration override associated with an Activity.
+     */
+    private static class ActivityResources {
+        public final Configuration overrideConfig = new Configuration();
+        public final ArrayList<WeakReference<Resources>> activityResources = new ArrayList<>();
+    }
+
+    /**
+     * Each Activity may has a base override configuration that is applied to each Resources object,
+     * which in turn may have their own override configuration specified.
+     */
+    private final WeakHashMap<IBinder, ActivityResources> mActivityResourceReferences =
+            new WeakHashMap<>();
+
+    /**
+     * A cache of DisplayId to DisplayAdjustments.
+     */
+    private final ArrayMap<Pair<Integer, DisplayAdjustments>, WeakReference<Display>> mDisplays =
+            new ArrayMap<>();
 
     public static ResourcesManager getInstance() {
         synchronized (ResourcesManager.class) {
@@ -82,18 +118,48 @@ public class ResourcesManager {
         }
     }
 
+    /**
+     * Invalidate and destroy any resources that reference content under the
+     * given filesystem path. Typically used when unmounting a storage device to
+     * try as hard as possible to release any open FDs.
+     */
+    public void invalidatePath(String path) {
+        synchronized (this) {
+            int count = 0;
+            for (int i = 0; i < mResourceImpls.size();) {
+                final ResourcesKey key = mResourceImpls.keyAt(i);
+                if (key.isPathReferenced(path)) {
+                    final ResourcesImpl res = mResourceImpls.removeAt(i).get();
+                    if (res != null) {
+                        res.flushLayoutCache();
+                    }
+                    count++;
+                } else {
+                    i++;
+                }
+            }
+            Log.i(TAG, "Invalidated " + count + " asset managers that referenced " + path);
+        }
+    }
+
     public Configuration getConfiguration() {
-        return mResConfiguration;
+        synchronized (this) {
+            return mResConfiguration;
+        }
     }
 
-    DisplayMetrics getDisplayMetricsLocked() {
-        return getDisplayMetricsLocked(Display.DEFAULT_DISPLAY);
+    DisplayMetrics getDisplayMetrics() {
+        return getDisplayMetrics(Display.DEFAULT_DISPLAY,
+                DisplayAdjustments.DEFAULT_DISPLAY_ADJUSTMENTS);
     }
 
-    DisplayMetrics getDisplayMetricsLocked(int displayId) {
+    /**
+     * Protected so that tests can override and returns something a fixed value.
+     */
+    @VisibleForTesting
+    protected @NonNull DisplayMetrics getDisplayMetrics(int displayId, DisplayAdjustments da) {
         DisplayMetrics dm = new DisplayMetrics();
-        final Display display =
-                getAdjustedDisplay(displayId, DisplayAdjustments.DEFAULT_DISPLAY_ADJUSTMENTS);
+        final Display display = getAdjustedDisplay(displayId, da);
         if (display != null) {
             display.getMetrics(dm);
         } else {
@@ -102,12 +168,12 @@ public class ResourcesManager {
         return dm;
     }
 
-    final void applyNonDefaultDisplayMetricsToConfigurationLocked(
-            DisplayMetrics dm, Configuration config) {
+    private static void applyNonDefaultDisplayMetricsToConfiguration(
+            @NonNull DisplayMetrics dm, @NonNull Configuration config) {
         config.touchscreen = Configuration.TOUCHSCREEN_NOTOUCH;
         config.densityDpi = dm.densityDpi;
-        config.screenWidthDp = (int)(dm.widthPixels / dm.density);
-        config.screenHeightDp = (int)(dm.heightPixels / dm.density);
+        config.screenWidthDp = (int) (dm.widthPixels / dm.density);
+        config.screenHeightDp = (int) (dm.heightPixels / dm.density);
         int sl = Configuration.resetScreenLayout(config.screenLayout);
         if (dm.widthPixels > dm.heightPixels) {
             config.orientation = Configuration.ORIENTATION_LANDSCAPE;
@@ -124,8 +190,8 @@ public class ResourcesManager {
         config.compatSmallestScreenWidthDp = config.smallestScreenWidthDp;
     }
 
-    public boolean applyCompatConfiguration(int displayDensity,
-            Configuration compatConfiguration) {
+    public boolean applyCompatConfigurationLocked(int displayDensity,
+            @NonNull Configuration compatConfiguration) {
         if (mResCompatibilityInfo != null && !mResCompatibilityInfo.supportsScreen()) {
             mResCompatibilityInfo.applyToConfiguration(displayDensity, compatConfiguration);
             return true;
@@ -140,7 +206,8 @@ public class ResourcesManager {
      * @param displayId display Id.
      * @param displayAdjustments display adjustments.
      */
-    public Display getAdjustedDisplay(final int displayId, DisplayAdjustments displayAdjustments) {
+    public Display getAdjustedDisplay(final int displayId,
+            @Nullable DisplayAdjustments displayAdjustments) {
         final DisplayAdjustments displayAdjustmentsCopy = (displayAdjustments != null)
                 ? new DisplayAdjustments(displayAdjustments) : new DisplayAdjustments();
         final Pair<Integer, DisplayAdjustments> key =
@@ -167,95 +234,64 @@ public class ResourcesManager {
     }
 
     /**
-     * Creates the top level Resources for applications with the given compatibility info.
+     * Creates an AssetManager from the paths within the ResourcesKey.
      *
-     * @param resDir the resource directory.
-     * @param splitResDirs split resource directories.
-     * @param overlayDirs the resource overlay directories.
-     * @param libDirs the shared library resource dirs this app references.
-     * @param displayId display Id.
-     * @param overrideConfiguration override configurations.
-     * @param compatInfo the compatibility info. Must not be null.
-     */
-    Resources getTopLevelResources(String resDir, String[] splitResDirs,
-            String[] overlayDirs, String[] libDirs, int displayId, String packageName,
-            Configuration overrideConfiguration, CompatibilityInfo compatInfo, Context context,
-            boolean isThemeable) {
-        final float scale = compatInfo.applicationScale;
-        ThemeConfig themeConfig = getThemeConfig();
-        Configuration overrideConfigCopy = (overrideConfiguration != null)
-                ? new Configuration(overrideConfiguration) : null;
-        ResourcesKey key = new ResourcesKey(resDir, displayId, overrideConfiguration, scale,
-                isThemeable, getThemeConfig());
-        Resources r;
-        synchronized (this) {
-            // Resources is app scale dependent.
-            if (DEBUG) Slog.w(TAG, "getTopLevelResources: " + resDir + " / " + scale);
-
-            WeakReference<Resources> wr = mActiveResources.get(key);
-            r = wr != null ? wr.get() : null;
-            //if (r != null) Log.i(TAG, "isUpToDate " + resDir + ": " + r.getAssets().isUpToDate());
-            if (r != null && r.getAssets().isUpToDate()) {
-                if (DEBUG) Slog.w(TAG, "Returning cached resources " + r + " " + resDir
-                        + ": appScale=" + r.getCompatibilityInfo().applicationScale
-                        + " key=" + key + " overrideConfig=" + overrideConfiguration);
-                return r;
-            }
-        }
-
-        //if (r != null) {
-        //    Log.w(TAG, "Throwing away out-of-date resources!!!! "
-        //            + r + " " + resDir);
-        //}
-
+     * This can be overridden in tests so as to avoid creating a real AssetManager with
+     * real APK paths.
+     * @param key The key containing the resource paths to add to the AssetManager.
+     * @return a new AssetManager.
+    */
+    @VisibleForTesting
+    protected @NonNull AssetManager createAssetManager(@NonNull final ResourcesKey key) {
         AssetManager assets = new AssetManager();
-        assets.setAppName(packageName);
-        assets.setThemeSupport(isThemeable);
+
         // resDir can be null if the 'android' package is creating a new Resources object.
         // This is fine, since each AssetManager automatically loads the 'android' package
         // already.
-        if (resDir != null) {
-            if (assets.addAssetPath(resDir) == 0) {
-                return null;
+        if (key.mResDir != null) {
+            if (assets.addAssetPath(key.mResDir) == 0) {
+                throw new Resources.NotFoundException("failed to add asset path " + key.mResDir);
             }
         }
 
-        if (splitResDirs != null) {
-            for (String splitResDir : splitResDirs) {
+        if (key.mSplitResDirs != null) {
+            for (final String splitResDir : key.mSplitResDirs) {
                 if (assets.addAssetPath(splitResDir) == 0) {
-                    return null;
+                    throw new Resources.NotFoundException(
+                            "failed to add split asset path " + splitResDir);
                 }
             }
         }
 
-        if (overlayDirs != null) {
-            for (String idmapPath : overlayDirs) {
-                assets.addOverlayPath(idmapPath, null, null, null, null);
+        if (key.mOverlayDirs != null) {
+            for (final String idmapPath : key.mOverlayDirs) {
+                assets.addOverlayPath(idmapPath);
             }
         }
 
-        if (libDirs != null) {
-            for (String libDir : libDirs) {
+        if (key.mLibDirs != null) {
+            for (final String libDir : key.mLibDirs) {
                 if (libDir.endsWith(".apk")) {
                     // Avoid opening files we know do not have resources,
                     // like code-only .jar files.
-                    if (assets.addAssetPath(libDir) == 0) {
-                        Slog.w(TAG, "Asset path '" + libDir +
+                    if (assets.addAssetPathAsSharedLibrary(libDir) == 0) {
+                        Log.w(TAG, "Asset path '" + libDir +
                                 "' does not exist or contains no resources.");
                     }
                 }
             }
         }
+        return assets;
+    }
 
-        //Log.i(TAG, "Resource: key=" + key + ", display metrics=" + metrics);
-        DisplayMetrics dm = getDisplayMetricsLocked(displayId);
+    private Configuration generateConfig(@NonNull ResourcesKey key, @NonNull DisplayMetrics dm) {
         Configuration config;
-        final boolean isDefaultDisplay = (displayId == Display.DEFAULT_DISPLAY);
+        final boolean isDefaultDisplay = (key.mDisplayId == Display.DEFAULT_DISPLAY);
         final boolean hasOverrideConfig = key.hasOverrideConfiguration();
         if (!isDefaultDisplay || hasOverrideConfig) {
             config = new Configuration(getConfiguration());
             if (!isDefaultDisplay) {
-                applyNonDefaultDisplayMetricsToConfigurationLocked(dm, config);
+                applyNonDefaultDisplayMetricsToConfiguration(dm, config);
             }
             if (hasOverrideConfig) {
                 config.updateFrom(key.mOverrideConfiguration);
@@ -264,548 +300,614 @@ public class ResourcesManager {
         } else {
             config = getConfiguration();
         }
+        return config;
+    }
 
-        boolean iconsAttached = false;
-        /* Attach theme information to the resulting AssetManager when appropriate. */
-        if (isThemeable && config != null && !context.getPackageManager().isSafeMode()) {
-            if (config.themeConfig == null) {
-                try {
-                    config.themeConfig = ThemeConfig.getBootTheme(context.getContentResolver());
-                } catch (Exception e) {
-                    Slog.d(TAG, "ThemeConfig.getBootTheme failed, falling back to system theme", e);
-                    config.themeConfig = ThemeConfig.getSystemTheme();
-                }
+    private @NonNull ResourcesImpl createResourcesImpl(@NonNull ResourcesKey key) {
+        final DisplayAdjustments daj = new DisplayAdjustments(key.mOverrideConfiguration);
+        daj.setCompatibilityInfo(key.mCompatInfo);
+
+        final AssetManager assets = createAssetManager(key);
+        final DisplayMetrics dm = getDisplayMetrics(key.mDisplayId, daj);
+        final Configuration config = generateConfig(key, dm);
+        final ResourcesImpl impl = new ResourcesImpl(assets, dm, config, daj);
+        if (DEBUG) {
+            Slog.d(TAG, "- creating impl=" + impl + " with key: " + key);
+        }
+        return impl;
+    }
+
+    /**
+     * Finds a cached ResourcesImpl object that matches the given ResourcesKey.
+     *
+     * @param key The key to match.
+     * @return a ResourcesImpl if the key matches a cache entry, null otherwise.
+     */
+    private ResourcesImpl findResourcesImplForKeyLocked(@NonNull ResourcesKey key) {
+        WeakReference<ResourcesImpl> weakImplRef = mResourceImpls.get(key);
+        ResourcesImpl impl = weakImplRef != null ? weakImplRef.get() : null;
+        if (impl != null && impl.getAssets().isUpToDate()) {
+            return impl;
+        }
+        return null;
+    }
+
+    /**
+     * Finds a cached ResourcesImpl object that matches the given ResourcesKey, or
+     * creates a new one and caches it for future use.
+     * @param key The key to match.
+     * @return a ResourcesImpl object matching the key.
+     */
+    private @NonNull ResourcesImpl findOrCreateResourcesImplForKeyLocked(
+            @NonNull ResourcesKey key) {
+        ResourcesImpl impl = findResourcesImplForKeyLocked(key);
+        if (impl == null) {
+            impl = createResourcesImpl(key);
+            mResourceImpls.put(key, new WeakReference<>(impl));
+        }
+        return impl;
+    }
+
+    /**
+     * Find the ResourcesKey that this ResourcesImpl object is associated with.
+     * @return the ResourcesKey or null if none was found.
+     */
+    private ResourcesKey findKeyForResourceImplLocked(@NonNull ResourcesImpl resourceImpl) {
+        final int refCount = mResourceImpls.size();
+        for (int i = 0; i < refCount; i++) {
+            WeakReference<ResourcesImpl> weakImplRef = mResourceImpls.valueAt(i);
+            ResourcesImpl impl = weakImplRef != null ? weakImplRef.get() : null;
+            if (impl != null && resourceImpl == impl) {
+                return mResourceImpls.keyAt(i);
             }
+        }
+        return null;
+    }
 
-            if (config.themeConfig != null) {
-                attachThemeAssets(assets, config.themeConfig);
-                attachCommonAssets(assets, config.themeConfig);
-                iconsAttached = attachIconAssets(assets, config.themeConfig);
+    private ActivityResources getOrCreateActivityResourcesStructLocked(
+            @NonNull IBinder activityToken) {
+        ActivityResources activityResources = mActivityResourceReferences.get(activityToken);
+        if (activityResources == null) {
+            activityResources = new ActivityResources();
+            mActivityResourceReferences.put(activityToken, activityResources);
+        }
+        return activityResources;
+    }
+
+    /**
+     * Gets an existing Resources object tied to this Activity, or creates one if it doesn't exist
+     * or the class loader is different.
+     */
+    private @NonNull Resources getOrCreateResourcesForActivityLocked(@NonNull IBinder activityToken,
+            @NonNull ClassLoader classLoader, @NonNull ResourcesImpl impl) {
+        final ActivityResources activityResources = getOrCreateActivityResourcesStructLocked(
+                activityToken);
+
+        final int refCount = activityResources.activityResources.size();
+        for (int i = 0; i < refCount; i++) {
+            WeakReference<Resources> weakResourceRef = activityResources.activityResources.get(i);
+            Resources resources = weakResourceRef.get();
+
+            if (resources != null
+                    && Objects.equals(resources.getClassLoader(), classLoader)
+                    && resources.getImpl() == impl) {
+                if (DEBUG) {
+                    Slog.d(TAG, "- using existing ref=" + resources);
+                }
+                return resources;
             }
         }
 
-        r = new Resources(assets, dm, config, compatInfo);
-        if (iconsAttached) setActivityIcons(r);
-        if (DEBUG) Slog.i(TAG, "Created app resources " + resDir + " " + r + ": "
-                + r.getConfiguration() + " appScale=" + r.getCompatibilityInfo().applicationScale);
+        Resources resources = new Resources(classLoader);
+        resources.setImpl(impl);
+        activityResources.activityResources.add(new WeakReference<>(resources));
+        if (DEBUG) {
+            Slog.d(TAG, "- creating new ref=" + resources);
+            Slog.d(TAG, "- setting ref=" + resources + " with impl=" + impl);
+        }
+        return resources;
+    }
 
+    /**
+     * Gets an existing Resources object if the class loader and ResourcesImpl are the same,
+     * otherwise creates a new Resources object.
+     */
+    private @NonNull Resources getOrCreateResourcesLocked(@NonNull ClassLoader classLoader,
+            @NonNull ResourcesImpl impl) {
+        // Find an existing Resources that has this ResourcesImpl set.
+        final int refCount = mResourceReferences.size();
+        for (int i = 0; i < refCount; i++) {
+            WeakReference<Resources> weakResourceRef = mResourceReferences.get(i);
+            Resources resources = weakResourceRef.get();
+            if (resources != null &&
+                    Objects.equals(resources.getClassLoader(), classLoader) &&
+                    resources.getImpl() == impl) {
+                if (DEBUG) {
+                    Slog.d(TAG, "- using existing ref=" + resources);
+                }
+                return resources;
+            }
+        }
 
-        synchronized (this) {
-            WeakReference<Resources> wr = mActiveResources.get(key);
-            Resources existing = wr != null ? wr.get() : null;
-            if (existing != null && existing.getAssets().isUpToDate()) {
-                // Someone else already created the resources while we were
-                // unlocked; go ahead and use theirs.
-                r.getAssets().close();
-                return existing;
+        // Create a new Resources reference and use the existing ResourcesImpl object.
+        Resources resources = new Resources(classLoader);
+        resources.setImpl(impl);
+        mResourceReferences.add(new WeakReference<>(resources));
+        if (DEBUG) {
+            Slog.d(TAG, "- creating new ref=" + resources);
+            Slog.d(TAG, "- setting ref=" + resources + " with impl=" + impl);
+        }
+        return resources;
+    }
+
+    /**
+     * Creates base resources for an Activity. Calls to
+     * {@link #getResources(IBinder, String, String[], String[], String[], int, Configuration,
+     * CompatibilityInfo, ClassLoader)} with the same activityToken will have their override
+     * configurations merged with the one specified here.
+     *
+     * @param activityToken Represents an Activity.
+     * @param resDir The base resource path. Can be null (only framework resources will be loaded).
+     * @param splitResDirs An array of split resource paths. Can be null.
+     * @param overlayDirs An array of overlay paths. Can be null.
+     * @param libDirs An array of resource library paths. Can be null.
+     * @param displayId The ID of the display for which to create the resources.
+     * @param overrideConfig The configuration to apply on top of the base configuration. Can be
+     *                       null. This provides the base override for this Activity.
+     * @param compatInfo The compatibility settings to use. Cannot be null. A default to use is
+     *                   {@link CompatibilityInfo#DEFAULT_COMPATIBILITY_INFO}.
+     * @param classLoader The class loader to use when inflating Resources. If null, the
+     *                    {@link ClassLoader#getSystemClassLoader()} is used.
+     * @return a Resources object from which to access resources.
+     */
+    public @NonNull Resources createBaseActivityResources(@NonNull IBinder activityToken,
+            @Nullable String resDir,
+            @Nullable String[] splitResDirs,
+            @Nullable String[] overlayDirs,
+            @Nullable String[] libDirs,
+            int displayId,
+            @Nullable Configuration overrideConfig,
+            @NonNull CompatibilityInfo compatInfo,
+            @Nullable ClassLoader classLoader) {
+        try {
+            Trace.traceBegin(Trace.TRACE_TAG_RESOURCES,
+                    "ResourcesManager#createBaseActivityResources");
+            final ResourcesKey key = new ResourcesKey(
+                    resDir,
+                    splitResDirs,
+                    overlayDirs,
+                    libDirs,
+                    displayId,
+                    overrideConfig != null ? new Configuration(overrideConfig) : null, // Copy
+                    compatInfo);
+            classLoader = classLoader != null ? classLoader : ClassLoader.getSystemClassLoader();
+
+            if (DEBUG) {
+                Slog.d(TAG, "createBaseActivityResources activity=" + activityToken
+                        + " with key=" + key);
             }
 
-            // XXX need to remove entries when weak references go away
-            mActiveResources.put(key, new WeakReference<>(r));
-            if (DEBUG) Slog.v(TAG, "mActiveResources.size()=" + mActiveResources.size());
-            return r;
+            synchronized (this) {
+                // Force the creation of an ActivityResourcesStruct.
+                getOrCreateActivityResourcesStructLocked(activityToken);
+            }
+
+            // Update any existing Activity Resources references.
+            updateResourcesForActivity(activityToken, overrideConfig);
+
+            // Now request an actual Resources object.
+            return getOrCreateResources(activityToken, key, classLoader);
+        } finally {
+            Trace.traceEnd(Trace.TRACE_TAG_RESOURCES);
         }
     }
 
     /**
-     * Creates the top level Resources for applications with the given compatibility info.
+     * Gets an existing Resources object set with a ResourcesImpl object matching the given key,
+     * or creates one if it doesn't exist.
      *
-     * @param resDir the resource directory.
-     * @param compatInfo the compability info. Must not be null.
-     *
-     * @hide
+     * @param activityToken The Activity this Resources object should be associated with.
+     * @param key The key describing the parameters of the ResourcesImpl object.
+     * @param classLoader The classloader to use for the Resources object.
+     *                    If null, {@link ClassLoader#getSystemClassLoader()} is used.
+     * @return A Resources object that gets updated when
+     *         {@link #applyConfigurationToResourcesLocked(Configuration, CompatibilityInfo)}
+     *         is called.
      */
-    public Resources getTopLevelThemedResources(String resDir, int displayId, String packageName,
-            String themePackageName, CompatibilityInfo compatInfo, boolean isThemeable) {
-        Resources r;
-
-        ThemeConfig.Builder builder = new ThemeConfig.Builder();
-        builder.defaultOverlay(themePackageName);
-        builder.defaultIcon(themePackageName);
-        builder.defaultFont(themePackageName);
-        ThemeConfig themeConfig = builder.build();
-
-        ResourcesKey key = new ResourcesKey(resDir, displayId, null, compatInfo.applicationScale,
-                isThemeable, themeConfig);
-
+    private @NonNull Resources getOrCreateResources(@Nullable IBinder activityToken,
+            @NonNull ResourcesKey key, @NonNull ClassLoader classLoader) {
         synchronized (this) {
-            WeakReference<Resources> wr = mActiveResources.get(key);
-            r = wr != null ? wr.get() : null;
-            if (r != null && r.getAssets().isUpToDate()) {
-                if (false) {
-                    Slog.w(TAG, "Returning cached resources " + r + " " + resDir
-                            + ": appScale=" + r.getCompatibilityInfo().applicationScale);
+            if (DEBUG) {
+                Throwable here = new Throwable();
+                here.fillInStackTrace();
+                Slog.w(TAG, "!! Get resources for activity=" + activityToken + " key=" + key, here);
+            }
+
+            if (activityToken != null) {
+                final ActivityResources activityResources =
+                        getOrCreateActivityResourcesStructLocked(activityToken);
+
+                // Clean up any dead references so they don't pile up.
+                ArrayUtils.unstableRemoveIf(activityResources.activityResources,
+                        sEmptyReferencePredicate);
+
+                // Rebase the key's override config on top of the Activity's base override.
+                if (key.hasOverrideConfiguration()
+                        && !activityResources.overrideConfig.equals(Configuration.EMPTY)) {
+                    final Configuration temp = new Configuration(activityResources.overrideConfig);
+                    temp.updateFrom(key.mOverrideConfiguration);
+                    key.mOverrideConfiguration.setTo(temp);
                 }
-                return r;
+
+                ResourcesImpl resourcesImpl = findResourcesImplForKeyLocked(key);
+                if (resourcesImpl != null) {
+                    if (DEBUG) {
+                        Slog.d(TAG, "- using existing impl=" + resourcesImpl);
+                    }
+                    return getOrCreateResourcesForActivityLocked(activityToken, classLoader,
+                            resourcesImpl);
+                }
+
+                // We will create the ResourcesImpl object outside of holding this lock.
+
+            } else {
+                // Clean up any dead references so they don't pile up.
+                ArrayUtils.unstableRemoveIf(mResourceReferences, sEmptyReferencePredicate);
+
+                // Not tied to an Activity, find a shared Resources that has the right ResourcesImpl
+                ResourcesImpl resourcesImpl = findResourcesImplForKeyLocked(key);
+                if (resourcesImpl != null) {
+                    if (DEBUG) {
+                        Slog.d(TAG, "- using existing impl=" + resourcesImpl);
+                    }
+                    return getOrCreateResourcesLocked(classLoader, resourcesImpl);
+                }
+
+                // We will create the ResourcesImpl object outside of holding this lock.
             }
         }
 
-        AssetManager assets = new AssetManager();
-        assets.setAppName(packageName);
-        assets.setThemeSupport(isThemeable);
-        if (assets.addAssetPath(resDir) == 0) {
-            return null;
-        }
-
-        //Slog.i(TAG, "Resource: key=" + key + ", display metrics=" + metrics);
-        DisplayMetrics dm = getDisplayMetricsLocked(displayId);
-        Configuration config;
-        boolean isDefaultDisplay = (displayId == Display.DEFAULT_DISPLAY);
-        final boolean hasOverrideConfig = key.hasOverrideConfiguration();
-        if (!isDefaultDisplay || hasOverrideConfig) {
-            config = new Configuration(getConfiguration());
-            if (!isDefaultDisplay) {
-                applyNonDefaultDisplayMetricsToConfigurationLocked(dm, config);
-            }
-            if (hasOverrideConfig) {
-                config.updateFrom(key.mOverrideConfiguration);
-            }
-        } else {
-            config = getConfiguration();
-        }
-
-        boolean iconsAttached = false;
-        if (isThemeable) {
-            /* Attach theme information to the resulting AssetManager when appropriate. */
-            attachThemeAssets(assets, themeConfig);
-            attachCommonAssets(assets, themeConfig);
-            iconsAttached = attachIconAssets(assets, themeConfig);
-        }
-        r = new Resources(assets, dm, config, compatInfo);
-        if (iconsAttached) setActivityIcons(r);
-
-        if (false) {
-            Slog.i(TAG, "Created THEMED app resources " + resDir + " " + r + ": "
-                    + r.getConfiguration() + " appScale="
-                    + r.getCompatibilityInfo().applicationScale);
-        }
+        // If we're here, we didn't find a suitable ResourcesImpl to use, so create one now.
+        ResourcesImpl resourcesImpl = createResourcesImpl(key);
 
         synchronized (this) {
-            WeakReference<Resources> wr = mActiveResources.get(key);
-            Resources existing = wr != null ? wr.get() : null;
-            if (existing != null && existing.getAssets().isUpToDate()) {
-                // Someone else already created the resources while we were
-                // unlocked; go ahead and use theirs.
-                r.getAssets().close();
-                return existing;
+            ResourcesImpl existingResourcesImpl = findResourcesImplForKeyLocked(key);
+            if (existingResourcesImpl != null) {
+                if (DEBUG) {
+                    Slog.d(TAG, "- got beat! existing impl=" + existingResourcesImpl
+                            + " new impl=" + resourcesImpl);
+                }
+                resourcesImpl.getAssets().close();
+                resourcesImpl = existingResourcesImpl;
+            } else {
+                // Add this ResourcesImpl to the cache.
+                mResourceImpls.put(key, new WeakReference<>(resourcesImpl));
             }
 
-            // XXX need to remove entries when weak references go away
-            mActiveResources.put(key, new WeakReference<Resources>(r));
-            return r;
+            final Resources resources;
+            if (activityToken != null) {
+                resources = getOrCreateResourcesForActivityLocked(activityToken, classLoader,
+                        resourcesImpl);
+            } else {
+                resources = getOrCreateResourcesLocked(classLoader, resourcesImpl);
+            }
+            return resources;
         }
     }
 
     /**
-     * Creates a map between an activity & app's icon ids to its component info. This map
-     * is then stored in the resource object.
-     * When resource.getDrawable(id) is called it will check this mapping and replace
-     * the id with the themed resource id if one is available
-     * @param r
+     * Gets or creates a new Resources object associated with the IBinder token. References returned
+     * by this method live as long as the Activity, meaning they can be cached and used by the
+     * Activity even after a configuration change. If any other parameter is changed
+     * (resDir, splitResDirs, overrideConfig) for a given Activity, the same Resources object
+     * is updated and handed back to the caller. However, changing the class loader will result in a
+     * new Resources object.
+     * <p/>
+     * If activityToken is null, a cached Resources object will be returned if it matches the
+     * input parameters. Otherwise a new Resources object that satisfies these parameters is
+     * returned.
+     *
+     * @param activityToken Represents an Activity. If null, global resources are assumed.
+     * @param resDir The base resource path. Can be null (only framework resources will be loaded).
+     * @param splitResDirs An array of split resource paths. Can be null.
+     * @param overlayDirs An array of overlay paths. Can be null.
+     * @param libDirs An array of resource library paths. Can be null.
+     * @param displayId The ID of the display for which to create the resources.
+     * @param overrideConfig The configuration to apply on top of the base configuration. Can be
+     * null. Mostly used with Activities that are in multi-window which may override width and
+     * height properties from the base config.
+     * @param compatInfo The compatibility settings to use. Cannot be null. A default to use is
+     * {@link CompatibilityInfo#DEFAULT_COMPATIBILITY_INFO}.
+     * @param classLoader The class loader to use when inflating Resources. If null, the
+     * {@link ClassLoader#getSystemClassLoader()} is used.
+     * @return a Resources object from which to access resources.
      */
-    private void setActivityIcons(Resources r) {
-        SparseArray<PackageItemInfo> iconResources = new SparseArray<PackageItemInfo>();
-        String pkgName = r.getAssets().getAppName();
-        PackageInfo pkgInfo = null;
-        ApplicationInfo appInfo = null;
-
+    public @NonNull Resources getResources(@Nullable IBinder activityToken,
+            @Nullable String resDir,
+            @Nullable String[] splitResDirs,
+            @Nullable String[] overlayDirs,
+            @Nullable String[] libDirs,
+            int displayId,
+            @Nullable Configuration overrideConfig,
+            @NonNull CompatibilityInfo compatInfo,
+            @Nullable ClassLoader classLoader) {
         try {
-            pkgInfo = getPackageManager().getPackageInfo(pkgName, PackageManager.GET_ACTIVITIES,
-                    UserHandle.getCallingUserId());
-        } catch (RemoteException e1) {
-            Slog.e(TAG, "Unable to get pkg " + pkgName, e1);
-            return;
-        }
-
-        final ThemeConfig themeConfig = r.getConfiguration().themeConfig;
-        if (pkgName != null && themeConfig != null &&
-                pkgName.equals(themeConfig.getIconPackPkgName())) {
-            return;
-        }
-
-        //Map application icon
-        if (pkgInfo != null && pkgInfo.applicationInfo != null) {
-            appInfo = pkgInfo.applicationInfo;
-            if (appInfo.themedIcon != 0 || iconResources.get(appInfo.icon) == null) {
-                iconResources.put(appInfo.icon, appInfo);
-            }
-        }
-
-        //Map activity icons.
-        if (pkgInfo != null && pkgInfo.activities != null) {
-            for (ActivityInfo ai : pkgInfo.activities) {
-                if (ai.icon != 0 && (ai.themedIcon != 0 || iconResources.get(ai.icon) == null)) {
-                    iconResources.put(ai.icon, ai);
-                } else if (appInfo != null && appInfo.icon != 0 &&
-                        (ai.themedIcon != 0 || iconResources.get(appInfo.icon) == null)) {
-                    iconResources.put(appInfo.icon, ai);
-                }
-            }
-        }
-
-        r.setIconResources(iconResources);
-        final IPackageManager pm = getPackageManager();
-        try {
-            ComposedIconInfo iconInfo = pm.getComposedIconInfo();
-            r.setComposedIconInfo(iconInfo);
-        } catch (Exception e) {
-            Slog.wtf(TAG, "Failed to retrieve ComposedIconInfo", e);
+            Trace.traceBegin(Trace.TRACE_TAG_RESOURCES, "ResourcesManager#getResources");
+            final ResourcesKey key = new ResourcesKey(
+                    resDir,
+                    splitResDirs,
+                    overlayDirs,
+                    libDirs,
+                    displayId,
+                    overrideConfig != null ? new Configuration(overrideConfig) : null, // Copy
+                    compatInfo);
+            classLoader = classLoader != null ? classLoader : ClassLoader.getSystemClassLoader();
+            return getOrCreateResources(activityToken, key, classLoader);
+        } finally {
+            Trace.traceEnd(Trace.TRACE_TAG_RESOURCES);
         }
     }
 
-    final boolean applyConfigurationToResourcesLocked(Configuration config,
-            CompatibilityInfo compat) {
-        if (mResConfiguration == null) {
-            mResConfiguration = new Configuration();
+    /**
+     * Updates an Activity's Resources object with overrideConfig. The Resources object
+     * that was previously returned by
+     * {@link #getResources(IBinder, String, String[], String[], String[], int, Configuration,
+     * CompatibilityInfo, ClassLoader)} is
+     * still valid and will have the updated configuration.
+     * @param activityToken The Activity token.
+     * @param overrideConfig The configuration override to update.
+     */
+    public void updateResourcesForActivity(@NonNull IBinder activityToken,
+            @Nullable Configuration overrideConfig) {
+        try {
+            Trace.traceBegin(Trace.TRACE_TAG_RESOURCES,
+                    "ResourcesManager#updateResourcesForActivity");
+            synchronized (this) {
+                final ActivityResources activityResources =
+                        getOrCreateActivityResourcesStructLocked(activityToken);
+
+                if (Objects.equals(activityResources.overrideConfig, overrideConfig)) {
+                    // They are the same, no work to do.
+                    return;
+                }
+
+                // Grab a copy of the old configuration so we can create the delta's of each
+                // Resources object associated with this Activity.
+                final Configuration oldConfig = new Configuration(activityResources.overrideConfig);
+
+                // Update the Activity's base override.
+                if (overrideConfig != null) {
+                    activityResources.overrideConfig.setTo(overrideConfig);
+                } else {
+                    activityResources.overrideConfig.setToDefaults();
+                }
+
+                if (DEBUG) {
+                    Throwable here = new Throwable();
+                    here.fillInStackTrace();
+                    Slog.d(TAG, "updating resources override for activity=" + activityToken
+                            + " from oldConfig="
+                            + Configuration.resourceQualifierString(oldConfig)
+                            + " to newConfig="
+                            + Configuration.resourceQualifierString(
+                            activityResources.overrideConfig),
+                            here);
+                }
+
+                final boolean activityHasOverrideConfig =
+                        !activityResources.overrideConfig.equals(Configuration.EMPTY);
+
+                // Rebase each Resources associated with this Activity.
+                final int refCount = activityResources.activityResources.size();
+                for (int i = 0; i < refCount; i++) {
+                    WeakReference<Resources> weakResRef = activityResources.activityResources.get(
+                            i);
+                    Resources resources = weakResRef.get();
+                    if (resources == null) {
+                        continue;
+                    }
+
+                    // Extract the ResourcesKey that was last used to create the Resources for this
+                    // activity.
+                    final ResourcesKey oldKey = findKeyForResourceImplLocked(resources.getImpl());
+                    if (oldKey == null) {
+                        Slog.e(TAG, "can't find ResourcesKey for resources impl="
+                                + resources.getImpl());
+                        continue;
+                    }
+
+                    // Build the new override configuration for this ResourcesKey.
+                    final Configuration rebasedOverrideConfig = new Configuration();
+                    if (overrideConfig != null) {
+                        rebasedOverrideConfig.setTo(overrideConfig);
+                    }
+
+                    if (activityHasOverrideConfig && oldKey.hasOverrideConfiguration()) {
+                        // Generate a delta between the old base Activity override configuration and
+                        // the actual final override configuration that was used to figure out the
+                        // real delta this Resources object wanted.
+                        Configuration overrideOverrideConfig = Configuration.generateDelta(
+                                oldConfig, oldKey.mOverrideConfiguration);
+                        rebasedOverrideConfig.updateFrom(overrideOverrideConfig);
+                    }
+
+                    // Create the new ResourcesKey with the rebased override config.
+                    final ResourcesKey newKey = new ResourcesKey(oldKey.mResDir,
+                            oldKey.mSplitResDirs,
+                            oldKey.mOverlayDirs, oldKey.mLibDirs, oldKey.mDisplayId,
+                            rebasedOverrideConfig, oldKey.mCompatInfo);
+
+                    if (DEBUG) {
+                        Slog.d(TAG, "rebasing ref=" + resources + " from oldKey=" + oldKey
+                                + " to newKey=" + newKey);
+                    }
+
+                    ResourcesImpl resourcesImpl = findResourcesImplForKeyLocked(newKey);
+                    if (resourcesImpl == null) {
+                        resourcesImpl = createResourcesImpl(newKey);
+                        mResourceImpls.put(newKey, new WeakReference<>(resourcesImpl));
+                    }
+
+                    if (resourcesImpl != resources.getImpl()) {
+                        // Set the ResourcesImpl, updating it for all users of this Resources
+                        // object.
+                        resources.setImpl(resourcesImpl);
+                    }
+                }
+            }
+        } finally {
+            Trace.traceEnd(Trace.TRACE_TAG_RESOURCES);
         }
-        if (!mResConfiguration.isOtherSeqNewer(config) && compat == null) {
-            if (DEBUG || DEBUG_CONFIGURATION) Slog.v(TAG, "Skipping new config: curSeq="
-                    + mResConfiguration.seq + ", newSeq=" + config.seq);
-            return false;
-        }
-        int changes = mResConfiguration.updateFrom(config);
-        // Things might have changed in display manager, so clear the cached displays.
-        mDisplays.clear();
-        DisplayMetrics defaultDisplayMetrics = getDisplayMetricsLocked();
+    }
 
-        if (compat != null && (mResCompatibilityInfo == null ||
-                !mResCompatibilityInfo.equals(compat))) {
-            mResCompatibilityInfo = compat;
-            changes |= ActivityInfo.CONFIG_SCREEN_LAYOUT
-                    | ActivityInfo.CONFIG_SCREEN_SIZE
-                    | ActivityInfo.CONFIG_SMALLEST_SCREEN_SIZE;
-        }
+    public final boolean applyConfigurationToResourcesLocked(@NonNull Configuration config,
+                                                             @Nullable CompatibilityInfo compat) {
+        try {
+            Trace.traceBegin(Trace.TRACE_TAG_RESOURCES,
+                    "ResourcesManager#applyConfigurationToResourcesLocked");
 
-        // set it for java, this also affects newly created Resources
-        if (config.locale != null) {
-            Locale.setDefault(config.locale);
-        }
+            if (!mResConfiguration.isOtherSeqNewer(config) && compat == null) {
+                if (DEBUG || DEBUG_CONFIGURATION) Slog.v(TAG, "Skipping new config: curSeq="
+                        + mResConfiguration.seq + ", newSeq=" + config.seq);
+                return false;
+            }
+            int changes = mResConfiguration.updateFrom(config);
+            // Things might have changed in display manager, so clear the cached displays.
+            mDisplays.clear();
+            DisplayMetrics defaultDisplayMetrics = getDisplayMetrics();
 
-        Resources.updateSystemConfiguration(config, defaultDisplayMetrics, compat);
+            if (compat != null && (mResCompatibilityInfo == null ||
+                    !mResCompatibilityInfo.equals(compat))) {
+                mResCompatibilityInfo = compat;
+                changes |= ActivityInfo.CONFIG_SCREEN_LAYOUT
+                        | ActivityInfo.CONFIG_SCREEN_SIZE
+                        | ActivityInfo.CONFIG_SMALLEST_SCREEN_SIZE;
+            }
 
-        ApplicationPackageManager.configurationChanged();
-        //Slog.i(TAG, "Configuration changed in " + currentPackageName());
+            Resources.updateSystemConfiguration(config, defaultDisplayMetrics, compat);
 
-        Configuration tmpConfig = null;
+            ApplicationPackageManager.configurationChanged();
+            //Slog.i(TAG, "Configuration changed in " + currentPackageName());
 
-        for (int i = mActiveResources.size() - 1; i >= 0; i--) {
-            ResourcesKey key = mActiveResources.keyAt(i);
-            Resources r = mActiveResources.valueAt(i).get();
-            if (r != null) {
-                if (DEBUG || DEBUG_CONFIGURATION) Slog.v(TAG, "Changing resources "
-                        + r + " config to: " + config);
-                int displayId = key.mDisplayId;
-                boolean isDefaultDisplay = (displayId == Display.DEFAULT_DISPLAY);
-                DisplayMetrics dm = defaultDisplayMetrics;
-                final boolean hasOverrideConfiguration = key.hasOverrideConfiguration();
-                boolean themeChanged = (changes & ActivityInfo.CONFIG_THEME_RESOURCE) != 0;
-                if (themeChanged) {
-                    AssetManager am = r.getAssets();
-                    if (am.hasThemeSupport()) {
-                        r.setIconResources(null);
-                        r.setComposedIconInfo(null);
-                        detachThemeAssets(am);
-                        if (config.themeConfig != null) {
-                            attachThemeAssets(am, config.themeConfig);
-                            attachCommonAssets(am, config.themeConfig);
-                            if (attachIconAssets(am, config.themeConfig)) {
-                                setActivityIcons(r);
+            Configuration tmpConfig = null;
+
+            for (int i = mResourceImpls.size() - 1; i >= 0; i--) {
+                ResourcesKey key = mResourceImpls.keyAt(i);
+                ResourcesImpl r = mResourceImpls.valueAt(i).get();
+                if (r != null) {
+                    if (DEBUG || DEBUG_CONFIGURATION) Slog.v(TAG, "Changing resources "
+                            + r + " config to: " + config);
+                    int displayId = key.mDisplayId;
+                    boolean isDefaultDisplay = (displayId == Display.DEFAULT_DISPLAY);
+                    DisplayMetrics dm = defaultDisplayMetrics;
+                    final boolean hasOverrideConfiguration = key.hasOverrideConfiguration();
+                    if (!isDefaultDisplay || hasOverrideConfiguration) {
+                        if (tmpConfig == null) {
+                            tmpConfig = new Configuration();
+                        }
+                        tmpConfig.setTo(config);
+                        if (!isDefaultDisplay) {
+                            // Get new DisplayMetrics based on the DisplayAdjustments given
+                            // to the ResourcesImpl. Udate a copy if the CompatibilityInfo
+                            // changed, because the ResourcesImpl object will handle the
+                            // update internally.
+                            DisplayAdjustments daj = r.getDisplayAdjustments();
+                            if (compat != null) {
+                                daj = new DisplayAdjustments(daj);
+                                daj.setCompatibilityInfo(compat);
                             }
+                            dm = getDisplayMetrics(displayId, daj);
+                            applyNonDefaultDisplayMetricsToConfiguration(dm, tmpConfig);
+                        }
+                        if (hasOverrideConfiguration) {
+                            tmpConfig.updateFrom(key.mOverrideConfiguration);
+                        }
+                        r.updateConfiguration(tmpConfig, dm, compat);
+                    } else {
+                        r.updateConfiguration(config, dm, compat);
+                    }
+                    //Slog.i(TAG, "Updated app resources " + v.getKey()
+                    //        + " " + r + ": " + r.getConfiguration());
+                } else {
+                    //Slog.i(TAG, "Removing old resources " + v.getKey());
+                    mResourceImpls.removeAt(i);
+                }
+            }
+
+            return changes != 0;
+        } finally {
+            Trace.traceEnd(Trace.TRACE_TAG_RESOURCES);
+        }
+    }
+
+    /**
+     * Appends the library asset path to any ResourcesImpl object that contains the main
+     * assetPath.
+     * @param assetPath The main asset path for which to add the library asset path.
+     * @param libAsset The library asset path to add.
+     */
+    public void appendLibAssetForMainAssetPath(String assetPath, String libAsset) {
+        synchronized (this) {
+            // Record which ResourcesImpl need updating
+            // (and what ResourcesKey they should update to).
+            final ArrayMap<ResourcesImpl, ResourcesKey> updatedResourceKeys = new ArrayMap<>();
+
+            final int implCount = mResourceImpls.size();
+            for (int i = 0; i < implCount; i++) {
+                final ResourcesImpl impl = mResourceImpls.valueAt(i).get();
+                final ResourcesKey key = mResourceImpls.keyAt(i);
+                if (impl != null && key.mResDir.equals(assetPath)) {
+                    if (!ArrayUtils.contains(key.mLibDirs, libAsset)) {
+                        final int newLibAssetCount = 1 +
+                                (key.mLibDirs != null ? key.mLibDirs.length : 0);
+                        final String[] newLibAssets = new String[newLibAssetCount];
+                        if (key.mLibDirs != null) {
+                            System.arraycopy(key.mLibDirs, 0, newLibAssets, 0, key.mLibDirs.length);
+                        }
+                        newLibAssets[newLibAssetCount - 1] = libAsset;
+
+                        updatedResourceKeys.put(impl, new ResourcesKey(
+                                key.mResDir,
+                                key.mSplitResDirs,
+                                key.mOverlayDirs,
+                                newLibAssets,
+                                key.mDisplayId,
+                                key.mOverrideConfiguration,
+                                key.mCompatInfo));
+                    }
+                }
+            }
+
+            // Bail early if there is no work to do.
+            if (updatedResourceKeys.isEmpty()) {
+                return;
+            }
+
+            // Update any references to ResourcesImpl that require reloading.
+            final int resourcesCount = mResourceReferences.size();
+            for (int i = 0; i < resourcesCount; i++) {
+                final Resources r = mResourceReferences.get(i).get();
+                if (r != null) {
+                    final ResourcesKey key = updatedResourceKeys.get(r.getImpl());
+                    if (key != null) {
+                        r.setImpl(findOrCreateResourcesImplForKeyLocked(key));
+                    }
+                }
+            }
+
+            // Update any references to ResourcesImpl that require reloading for each Activity.
+            for (ActivityResources activityResources : mActivityResourceReferences.values()) {
+                final int resCount = activityResources.activityResources.size();
+                for (int i = 0; i < resCount; i++) {
+                    final Resources r = activityResources.activityResources.get(i).get();
+                    if (r != null) {
+                        final ResourcesKey key = updatedResourceKeys.get(r.getImpl());
+                        if (key != null) {
+                            r.setImpl(findOrCreateResourcesImplForKeyLocked(key));
                         }
                     }
                 }
-                if (!isDefaultDisplay || hasOverrideConfiguration) {
-                    if (tmpConfig == null) {
-                        tmpConfig = new Configuration();
-                    }
-                    tmpConfig.setTo(config);
-                    if (!isDefaultDisplay) {
-                        dm = getDisplayMetricsLocked(displayId);
-                        applyNonDefaultDisplayMetricsToConfigurationLocked(dm, tmpConfig);
-                    }
-                    if (hasOverrideConfiguration) {
-                        tmpConfig.updateFrom(key.mOverrideConfiguration);
-                    }
-                    r.updateConfiguration(tmpConfig, dm, compat);
-                } else {
-                    r.updateConfiguration(config, dm, compat);
-                }
-                if (themeChanged) {
-                    r.updateStringCache();
-                }
-                //Slog.i(TAG, "Updated app resources " + v.getKey()
-                //        + " " + r + ": " + r.getConfiguration());
-            } else {
-                //Slog.i(TAG, "Removing old resources " + v.getKey());
-                mActiveResources.removeAt(i);
             }
         }
-
-        return changes != 0;
-    }
-
-    public static IPackageManager getPackageManager() {
-        if (sPackageManager != null) {
-            return sPackageManager;
-        }
-        IBinder b = ServiceManager.getService("package");
-        sPackageManager = IPackageManager.Stub.asInterface(b);
-        return sPackageManager;
-    }
-
-
-    /**
-     * Attach the necessary theme asset paths and meta information to convert an
-     * AssetManager to being globally "theme-aware".
-     *
-     * @param assets
-     * @param theme
-     * @return true if the AssetManager is now theme-aware; false otherwise.
-     *         This can fail, for example, if the theme package has been been
-     *         removed and the theme manager has yet to revert formally back to
-     *         the framework default.
-     */
-    private boolean attachThemeAssets(AssetManager assets, ThemeConfig theme) {
-        PackageInfo piTheme = null;
-        PackageInfo piTarget = null;
-        PackageInfo piAndroid = null;
-        PackageInfo piCm = null;
-
-        // Some apps run in process of another app (eg keyguard/systemUI) so we must get the
-        // package name from the res tables. The 0th base package name will be the android group.
-        // The 1st base package name will be the app group if one is attached. Check if it is there
-        // first or else the system will crash!
-        String basePackageName = null;
-        String resourcePackageName = null;
-        int count = assets.getBasePackageCount();
-        if (count > NUM_DEFAULT_ASSETS) {
-            basePackageName  = assets.getBasePackageName(NUM_DEFAULT_ASSETS);
-            resourcePackageName = assets.getBaseResourcePackageName(NUM_DEFAULT_ASSETS);
-        } else if (count == NUM_DEFAULT_ASSETS) {
-            basePackageName  = assets.getBasePackageName(0);
-        } else {
-            return false;
-        }
-
-        try {
-            piTheme = getPackageManager().getPackageInfo(
-                    theme.getOverlayPkgNameForApp(basePackageName), 0,
-                    UserHandle.getCallingUserId());
-            piTarget = getPackageManager().getPackageInfo(
-                    basePackageName, 0, UserHandle.getCallingUserId());
-
-            // Handle special case where a system app (ex trebuchet) may have had its pkg name
-            // renamed during an upgrade. basePackageName would be the manifest value which will
-            // fail on getPackageInfo(). resource pkg is assumed to have the original name
-            if (piTarget == null && resourcePackageName != null) {
-                piTarget = getPackageManager().getPackageInfo(resourcePackageName,
-                        0, UserHandle.getCallingUserId());
-            }
-            piAndroid = getPackageManager().getPackageInfo("android", 0,
-                    UserHandle.getCallingUserId());
-            piCm = getPackageManager().getPackageInfo("cyanogenmod.platform", 0,
-                    UserHandle.getCallingUserId());
-        } catch (RemoteException e) {
-        }
-
-        if (piTheme == null || piTheme.applicationInfo == null ||
-                    piTarget == null || piTarget.applicationInfo == null ||
-                    piAndroid == null || piAndroid.applicationInfo == null ||
-                    piCm == null || piCm.applicationInfo == null ||
-                    piTheme.mOverlayTargets == null) {
-            return false;
-        }
-
-        // Attach themed resources for target
-        String themePackageName = piTheme.packageName;
-        String themePath = piTheme.applicationInfo.publicSourceDir;
-        if (!piTarget.isThemeApk && piTheme.mOverlayTargets.contains(basePackageName)) {
-            String targetPackagePath = piTarget.applicationInfo.sourceDir;
-            String prefixPath = ThemeUtils.getOverlayPathToTarget(basePackageName);
-
-            String resCachePath = ThemeUtils.getTargetCacheDir(piTarget.packageName,
-                    piTheme.packageName);
-            String resApkPath = resCachePath + "/resources.apk";
-            String idmapPath = ThemeUtils.getIdmapPath(piTarget.packageName, piTheme.packageName);
-            int cookie = assets.addOverlayPath(idmapPath, themePath, resApkPath,
-                    targetPackagePath, prefixPath);
-
-            if (cookie != 0) {
-                assets.setThemePackageName(themePackageName);
-                assets.addThemeCookie(cookie);
-            }
-        }
-
-        // Attach themed resources for cmsdk
-        if (!piTarget.isThemeApk && !piCm.packageName.equals(basePackageName) &&
-                piTheme.mOverlayTargets.contains(piCm.packageName)) {
-            String resCachePath= ThemeUtils.getTargetCacheDir(piCm.packageName,
-                    piTheme.packageName);
-            String prefixPath = ThemeUtils.getOverlayPathToTarget(piCm.packageName);
-            String targetPackagePath = piCm.applicationInfo.publicSourceDir;
-            String resApkPath = resCachePath + "/resources.apk";
-            String idmapPath = ThemeUtils.getIdmapPath(piCm.packageName, piTheme.packageName);
-            int cookie = assets.addOverlayPath(idmapPath, themePath,
-                    resApkPath, targetPackagePath, prefixPath);
-            if (cookie != 0) {
-                assets.setThemePackageName(themePackageName);
-                assets.addThemeCookie(cookie);
-            }
-        }
-
-        // Attach themed resources for android framework
-        if (!piTarget.isThemeApk && !"android".equals(basePackageName) &&
-                piTheme.mOverlayTargets.contains("android")) {
-            String resCachePath= ThemeUtils.getTargetCacheDir(piAndroid.packageName,
-                    piTheme.packageName);
-            String prefixPath = ThemeUtils.getOverlayPathToTarget(piAndroid.packageName);
-            String targetPackagePath = piAndroid.applicationInfo.publicSourceDir;
-            String resApkPath = resCachePath + "/resources.apk";
-            String idmapPath = ThemeUtils.getIdmapPath("android", piTheme.packageName);
-            int cookie = assets.addOverlayPath(idmapPath, themePath,
-                    resApkPath, targetPackagePath, prefixPath);
-            if (cookie != 0) {
-                assets.setThemePackageName(themePackageName);
-                assets.addThemeCookie(cookie);
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Attach the necessary icon asset paths. Icon assets should be in a different
-     * namespace than the standard 0x7F.
-     *
-     * @param assets
-     * @param theme
-     * @return true if succes, false otherwise
-     */
-    private boolean attachIconAssets(AssetManager assets, ThemeConfig theme) {
-        PackageInfo piIcon = null;
-        try {
-            piIcon = getPackageManager().getPackageInfo(theme.getIconPackPkgName(), 0,
-                    UserHandle.getCallingUserId());
-        } catch (RemoteException e) {
-        }
-
-        if (piIcon == null || piIcon.applicationInfo == null) {
-            return false;
-        }
-
-        String iconPkg = theme.getIconPackPkgName();
-        if (iconPkg != null && !iconPkg.isEmpty()) {
-            String themeIconPath =  piIcon.applicationInfo.publicSourceDir;
-            String prefixPath = ThemeUtils.ICONS_PATH;
-            String iconDir = ThemeUtils.getIconPackDir(iconPkg);
-            String resTablePath = iconDir + "/resources.arsc";
-            String resApkPath = iconDir + "/resources.apk";
-
-            // Legacy Icon packs have everything in their APK
-            if (piIcon.isLegacyIconPackApk) {
-                prefixPath = "";
-                resApkPath = "";
-                resTablePath = "";
-            }
-
-            int cookie = assets.addIconPath(themeIconPath, resApkPath, prefixPath,
-                    Resources.THEME_ICON_PKG_ID);
-            if (cookie != 0) {
-                assets.setIconPackCookie(cookie);
-                assets.setIconPackageName(iconPkg);
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Attach the necessary common asset paths. Common assets should be in a different
-     * namespace than the standard 0x7F.
-     *
-     * @param assets
-     * @param theme
-     * @return true if succes, false otherwise
-     */
-    private boolean attachCommonAssets(AssetManager assets, ThemeConfig theme) {
-        // Some apps run in process of another app (eg keyguard/systemUI) so we must get the
-        // package name from the res tables. The 0th base package name will be the android group.
-        // The 1st base package name will be the app group if one is attached. Check if it is there
-        // first or else the system will crash!
-        String basePackageName;
-        int count = assets.getBasePackageCount();
-        if (count > NUM_DEFAULT_ASSETS) {
-            basePackageName  = assets.getBasePackageName(NUM_DEFAULT_ASSETS);
-        } else if (count == NUM_DEFAULT_ASSETS) {
-            basePackageName  = assets.getBasePackageName(0);
-        } else {
-            return false;
-        }
-
-        PackageInfo piTheme = null;
-        try {
-            piTheme = getPackageManager().getPackageInfo(
-                    theme.getOverlayPkgNameForApp(basePackageName), 0,
-                    UserHandle.getCallingUserId());
-        } catch (RemoteException e) {
-        }
-
-        if (piTheme == null || piTheme.applicationInfo == null) {
-            return false;
-        }
-
-        String themePackageName =
-                ThemeUtils.getCommonPackageName(piTheme.applicationInfo.packageName);
-        if (themePackageName != null && !themePackageName.isEmpty()) {
-            String themePath =  piTheme.applicationInfo.publicSourceDir;
-            String prefixPath = ThemeUtils.COMMON_RES_PATH;
-            String resCachePath =
-                    ThemeUtils.getTargetCacheDir(ThemeUtils.COMMON_RES_TARGET, piTheme.packageName);
-            String resApkPath = resCachePath + "/resources.apk";
-            int cookie = assets.addCommonOverlayPath(themePath, resApkPath,
-                    prefixPath);
-            if (cookie != 0) {
-                assets.setCommonResCookie(cookie);
-                assets.setCommonResPackageName(themePackageName);
-            }
-        }
-
-        return true;
-    }
-
-    private void detachThemeAssets(AssetManager assets) {
-        String themePackageName = assets.getThemePackageName();
-        String iconPackageName = assets.getIconPackageName();
-        String commonResPackageName = assets.getCommonResPackageName();
-
-        //Remove Icon pack if it exists
-        if (!TextUtils.isEmpty(iconPackageName) && assets.getIconPackCookie() > 0) {
-            assets.removeOverlayPath(iconPackageName, assets.getIconPackCookie());
-            assets.setIconPackageName(null);
-            assets.setIconPackCookie(0);
-        }
-        //Remove common resources if it exists
-        if (!TextUtils.isEmpty(commonResPackageName) && assets.getCommonResCookie() > 0) {
-            assets.removeOverlayPath(commonResPackageName, assets.getCommonResCookie());
-            assets.setCommonResPackageName(null);
-            assets.setCommonResCookie(0);
-        }
-        final List<Integer> themeCookies = assets.getThemeCookies();
-        if (!TextUtils.isEmpty(themePackageName) && !themeCookies.isEmpty()) {
-            // remove overlays in reverse order
-            for (int i = themeCookies.size() - 1; i >= 0; i--) {
-                assets.removeOverlayPath(themePackageName, themeCookies.get(i));
-            }
-        }
-        assets.getThemeCookies().clear();
-        assets.setThemePackageName(null);
-    }
-
-    private ThemeConfig getThemeConfig() {
-        Configuration config = getConfiguration();
-        if (config != null) {
-            return config.themeConfig;
-        }
-        return null;
     }
 }

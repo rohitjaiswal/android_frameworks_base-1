@@ -48,7 +48,7 @@ static struct {
 // ----------------------------------------------------------------------------
 
 static jobject gPowerManagerServiceObj;
-static struct power_module* gPowerModule;
+struct power_module* gPowerModule;
 
 static nsecs_t gLastEventTime[USER_ACTIVITY_EVENT_LAST + 1];
 
@@ -172,7 +172,7 @@ static jint nativeGetFeature(JNIEnv *env, jclass clazz, jint featureId) {
 
 // ----------------------------------------------------------------------------
 
-static JNINativeMethod gPowerManagerServiceMethods[] = {
+static const JNINativeMethod gPowerManagerServiceMethods[] = {
     /* name, signature, funcPtr */
     { "nativeInit", "()V",
             (void*) nativeInit },

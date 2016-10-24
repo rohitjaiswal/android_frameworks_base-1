@@ -18,17 +18,20 @@ package android.view;
 
 import android.annotation.IntDef;
 import android.annotation.SystemApi;
+import android.app.ActivityManager.StackId;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
-import android.content.pm.ApplicationInfo;
 import android.content.res.CompatibilityInfo;
 import android.content.res.Configuration;
+import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.RemoteException;
 import android.view.animation.Animation;
+import com.android.internal.policy.IShortcutService;
 
 import java.io.PrintWriter;
 import java.lang.annotation.Retention;
@@ -88,6 +91,11 @@ public interface WindowManagerPolicy {
     public final static int FLAG_INTERACTIVE = 0x20000000;
     public final static int FLAG_PASS_TO_USER = 0x40000000;
 
+    // Flags for IActivityManager.keyguardGoingAway()
+    public final static int KEYGUARD_GOING_AWAY_FLAG_TO_SHADE = 1 << 0;
+    public final static int KEYGUARD_GOING_AWAY_FLAG_NO_WINDOW_ANIMATIONS = 1 << 1;
+    public final static int KEYGUARD_GOING_AWAY_FLAG_WITH_WALLPAPER = 1 << 2;
+
     // Flags used for indicating whether the internal and/or external input devices
     // of some type are available.
     public final static int PRESENCE_INTERNAL = 1 << 0;
@@ -118,6 +126,14 @@ public interface WindowManagerPolicy {
      * {@link #interceptKeyBeforeQueueing}.
      */
     public final static int ACTION_PASS_TO_USER = 0x00000001;
+
+    /**
+     * Register shortcuts for window manager to dispatch.
+     * Shortcut code is packed as (metaState << Integer.SIZE) | keyCode
+     * @hide
+     */
+    void registerShortcutKey(long shortcutCode, IShortcutService shortcutKeyReceiver)
+            throws RemoteException;
 
     /**
      * Interface to the Window Manager state associated with a particular
@@ -175,12 +191,12 @@ public interface WindowManagerPolicy {
         public Rect getFrameLw();
 
         /**
-         * Retrieve the current frame of the window that is actually shown.
+         * Retrieve the current position of the window that is actually shown.
          * Must be called with the window manager lock held.
          *
-         * @return Rect The rectangle holding the shown window frame.
+         * @return Point The point holding the shown window position.
          */
-        public RectF getShownFrameLw();
+        public Point getShownPositionLw();
 
         /**
          * Retrieve the frame of the display that this window was last
@@ -335,7 +351,7 @@ public interface WindowManagerPolicy {
          * Return true if this window (or a window it is attached to, but not
          * considering its app token) is currently animating.
          */
-        public boolean isAnimatingLw();
+        boolean isAnimatingLw();
 
         /**
          * Is this window considered to be gone for purposes of layout?
@@ -388,6 +404,18 @@ public interface WindowManagerPolicy {
          * Check whether the window is currently dimming.
          */
         public boolean isDimming();
+
+        /**
+         * @return the stack id this windows belongs to, or {@link StackId#INVALID_STACK_ID} if
+         *         not attached to any stack.
+         */
+        int getStackId();
+
+        /**
+         * Returns true if the window is current in multi-windowing mode. i.e. it shares the
+         * screen with other application windows.
+         */
+        public boolean isInMultiWindowMode();
     }
 
     /**
@@ -441,15 +469,14 @@ public interface WindowManagerPolicy {
         public int getCameraLensCoverState();
 
         /**
-         * Switch the keyboard layout for the given device.
-         * Direction should be +1 or -1 to go to the next or previous keyboard layout.
+         * Switch the input method, to be precise, input method subtype.
+         *
+         * @param forwardDirection {@code true} to rotate in a forward direction.
          */
-        public void switchKeyboardLayout(int deviceId, int direction);
+        public void switchInputMethod(boolean forwardDirection);
 
         public void shutdown(boolean confirm);
         public void rebootSafeMode(boolean confirm);
-
-        public void rebootTile();
 
         /**
          * Return the window manager lock needed to correctly call "Lw" methods.
@@ -461,6 +488,16 @@ public interface WindowManagerPolicy {
 
         /** Unregister a system listener for touch events */
         void unregisterPointerEventListener(PointerEventListener listener);
+
+        /**
+         * @return The content insets of the docked divider window.
+         */
+        int getDockedDividerInsetsLw();
+
+        /**
+         * Retrieves the {@param outBounds} from the stack with id {@param stackId}.
+         */
+        void getStackBounds(int stackId, Rect outBounds);
 
         void addSystemUIVisibilityFlag(int flags);
     }
@@ -617,17 +654,19 @@ public interface WindowManagerPolicy {
 
     /**
      * Return the display width available after excluding any screen
-     * decorations that can never be removed.  That is, system bar or
+     * decorations that could never be removed in Honeycomb. That is, system bar or
      * button bar.
      */
-    public int getNonDecorDisplayWidth(int fullWidth, int fullHeight, int rotation);
+    public int getNonDecorDisplayWidth(int fullWidth, int fullHeight, int rotation,
+            int uiMode);
 
     /**
      * Return the display height available after excluding any screen
-     * decorations that can never be removed.  That is, system bar or
+     * decorations that could never be removed in Honeycomb. That is, system bar or
      * button bar.
      */
-    public int getNonDecorDisplayHeight(int fullWidth, int fullHeight, int rotation);
+    public int getNonDecorDisplayHeight(int fullWidth, int fullHeight, int rotation,
+            int uiMode);
 
     /**
      * Return the available screen width that we should report for the
@@ -635,7 +674,8 @@ public interface WindowManagerPolicy {
      * {@link #getNonDecorDisplayWidth(int, int, int)}; it may be smaller than
      * that to account for more transient decoration like a status bar.
      */
-    public int getConfigDisplayWidth(int fullWidth, int fullHeight, int rotation);
+    public int getConfigDisplayWidth(int fullWidth, int fullHeight, int rotation,
+            int uiMode);
 
     /**
      * Return the available screen height that we should report for the
@@ -643,7 +683,8 @@ public interface WindowManagerPolicy {
      * {@link #getNonDecorDisplayHeight(int, int, int)}; it may be smaller than
      * that to account for more transient decoration like a status bar.
      */
-    public int getConfigDisplayHeight(int fullWidth, int fullHeight, int rotation);
+    public int getConfigDisplayHeight(int fullWidth, int fullHeight, int rotation,
+            int uiMode);
 
     /**
      * Return whether the given window is forcibly hiding all windows except windows with
@@ -688,6 +729,8 @@ public interface WindowManagerPolicy {
      * @param labelRes The resource ID the application would like to use as its name.
      * @param icon The resource ID the application would like to use as its icon.
      * @param windowFlags Window layout flags.
+     * @param overrideConfig override configuration to consider when generating
+     *        context to for resources.
      *
      * @return Optionally you can return the View that was used to create the
      *         window, for easy removal in removeStartingWindow.
@@ -696,7 +739,7 @@ public interface WindowManagerPolicy {
      */
     public View addStartingWindow(IBinder appToken, String packageName,
             int theme, CompatibilityInfo compatInfo, CharSequence nonLocalizedLabel,
-            int labelRes, int icon, int logo, int windowFlags);
+            int labelRes, int icon, int logo, int windowFlags, Configuration overrideConfig);
 
     /**
      * Called when the first window of an application has been displayed, while
@@ -788,8 +831,7 @@ public interface WindowManagerPolicy {
      * Create and return an animation to let the wallpaper disappear after being shown on a force
      * hiding window.
      */
-    public Animation createForceHideWallpaperExitAnimation(boolean goingToNotificationShade,
-            boolean keyguardShowingMedia);
+    public Animation createForceHideWallpaperExitAnimation(boolean goingToNotificationShade);
 
     /**
      * Called from the input reader thread before a key is enqueued.
@@ -859,11 +901,11 @@ public interface WindowManagerPolicy {
      * @param isDefaultDisplay true if window is on {@link Display#DEFAULT_DISPLAY}.
      * @param displayWidth The current full width of the screen.
      * @param displayHeight The current full height of the screen.
-     * @param displayRotation The current rotation being applied to the base
-     * window.
+     * @param displayRotation The current rotation being applied to the base window.
+     * @param uiMode The current uiMode in configuration.
      */
     public void beginLayoutLw(boolean isDefaultDisplay, int displayWidth, int displayHeight,
-                              int displayRotation);
+                              int displayRotation, int uiMode);
 
     /**
      * Returns the bottom-most layer of the system decor, above which no policy decor should
@@ -898,15 +940,21 @@ public interface WindowManagerPolicy {
      * be correct.
      *
      * @param attrs The LayoutParams of the window.
-     * @param rotation Rotation of the display.
+     * @param taskBounds The bounds of the task this window is on or {@code null} if no task is
+     *                   associated with the window.
+     * @param displayRotation Rotation of the display.
+     * @param displayWidth The width of the display.
+     * @param displayHeight The height of the display.
      * @param outContentInsets The areas covered by system windows, expressed as positive insets.
      * @param outStableInsets The areas covered by stable system windows irrespective of their
      *                        current visibility. Expressed as positive insets.
      * @param outOutsets The areas that are not real display, but we would like to treat as such.
-     *
+     * @return Whether to always consume the navigation bar.
+     *         See {@link #isNavBarForcedShownLw(WindowState)}.
      */
-    public void getInsetHintLw(WindowManager.LayoutParams attrs, int rotation,
-            Rect outContentInsets, Rect outStableInsets, Rect outOutsets);
+    public boolean getInsetHintLw(WindowManager.LayoutParams attrs, Rect taskBounds,
+            int displayRotation, int displayWidth, int displayHeight, Rect outContentInsets,
+            Rect outStableInsets, Rect outOutsets);
 
     /**
      * Called when layout of the windows is finished.  After this function has
@@ -1080,10 +1128,11 @@ public interface WindowManagerPolicy {
      * isKeyguardSecure
      *
      * Return whether the keyguard requires a password to unlock.
+     * @param userId
      *
      * @return true if in keyguard is secure.
      */
-    public boolean isKeyguardSecure();
+    public boolean isKeyguardSecure(int userId);
 
     /**
      * Return whether the keyguard is on.
@@ -1174,15 +1223,9 @@ public interface WindowManagerPolicy {
     public void systemBooted();
 
     /**
-     * name of package being worked on during boot time message
-     */
-    public void setPackageName(String pkgName);
-
-    /**
      * Show boot time message to the user.
      */
-    public void showBootMessage(final ApplicationInfo appInfo,
-            final CharSequence msg, final boolean always);
+    public void showBootMessage(final CharSequence msg, final boolean always);
 
     /**
      * Hide the UI for showing boot messages, never to be displayed again.
@@ -1254,17 +1297,11 @@ public interface WindowManagerPolicy {
      * Specifies whether there is an on-screen navigation bar separate from the status bar.
      */
     public boolean hasNavigationBar();
-    public boolean hasPermanentMenuKey();
 
     /**
-     * Specifies whether the device needs a navigation bar (because it has no hardware buttons)
+     * Device requires a software navigation bar.
      */
     public boolean needsNavigationBar();
-
-    /**
-     * Navigation bar window is currently capable of being vertical
-     */
-    public boolean navigationBarCanMove();
 
     /**
      * Lock the device now.
@@ -1282,7 +1319,7 @@ public interface WindowManagerPolicy {
      * Show the recents task list app.
      * @hide
      */
-    public void showRecentApps();
+    public void showRecentApps(boolean fromHome);
 
     /**
      * Show the global actions dialog.
@@ -1340,12 +1377,44 @@ public interface WindowManagerPolicy {
      */
     public void startKeyguardExitAnimation(long startTime, long fadeoutDuration);
 
-    public void setLiveLockscreenEdgeDetector(boolean enable);
+    /**
+     * Calculates the stable insets without running a layout.
+     *
+     * @param displayRotation the current display rotation
+     * @param displayWidth the current display width
+     * @param displayHeight the current display height
+     * @param outInsets the insets to return
+     */
+    public void getStableInsetsLw(int displayRotation, int displayWidth, int displayHeight,
+            Rect outInsets);
+
 
     /**
-     * Toggle global menu
-     *
-     * @hide
+     * @return true if the navigation bar is forced to stay visible
      */
-    public void toggleGlobalMenu();
+    public boolean isNavBarForcedShownLw(WindowState win);
+
+    /**
+     * Calculates the insets for the areas that could never be removed in Honeycomb, i.e. system
+     * bar or button bar. See {@link #getNonDecorDisplayWidth}.
+     *
+     * @param displayRotation the current display rotation
+     * @param displayWidth the current display width
+     * @param displayHeight the current display height
+     * @param outInsets the insets to return
+     */
+    public void getNonDecorInsetsLw(int displayRotation, int displayWidth, int displayHeight,
+            Rect outInsets);
+
+    /**
+     * @return True if a specified {@param dockSide} is allowed on the current device, or false
+     *         otherwise. It is guaranteed that at least one dock side for a particular orientation
+     *         is allowed, so for example, if DOCKED_RIGHT is not allowed, DOCKED_LEFT is allowed.
+     */
+    public boolean isDockSideAllowed(int dockSide);
+
+    /**
+     * Called when the configuration has changed, and it's safe to load new values from resources.
+     */
+    public void onConfigurationChanged();
 }

@@ -18,6 +18,8 @@ package com.android.ims.internal;
 
 import com.android.ims.ImsReasonInfo;
 
+import android.net.Uri;
+
 /**
  * A listener type for receiving notifications about the changes to
  * the IMS connection(registration).
@@ -28,10 +30,24 @@ interface IImsRegistrationListener {
     /**
      * Notifies the application when the device is connected to the IMS network.
      *
+     * @deprecated see {@link registrationConnectedWithRadioTech}
+     */
+    void registrationConnected();
+
+    /**
+     * Notifies the application when the device is trying to connect the IMS network.
+     *
+     * @deprecated see {@link registrationProgressingWithRadioTech}
+     */
+    void registrationProgressing();
+
+    /**
+     * Notifies the application when the device is connected to the IMS network.
+     *
      * @param imsRadioTech the radio access technology. Valid values are {@code
      * RIL_RADIO_TECHNOLOGY_*} defined in {@link ServiceState}.
      */
-    void registrationConnected(int imsRadioTech) = 0;
+    void registrationConnectedWithRadioTech(int imsRadioTech);
 
     /**
      * Notifies the application when the device is trying to connect the IMS network.
@@ -39,24 +55,25 @@ interface IImsRegistrationListener {
      * @param imsRadioTech the radio access technology. Valid values are {@code
      * RIL_RADIO_TECHNOLOGY_*} defined in {@link ServiceState}.
      */
-    void registrationProgressing(int imsRadioTech) = 1;
+    void registrationProgressingWithRadioTech(int imsRadioTech);
+
 
     /**
      * Notifies the application when the device is disconnected from the IMS network.
      */
-    void registrationDisconnected(in ImsReasonInfo imsReasonInfo) = 2;
+    void registrationDisconnected(in ImsReasonInfo imsReasonInfo);
 
     /**
      * Notifies the application when its suspended IMS connection is resumed,
      * meaning the connection now allows throughput.
      */
-    void registrationResumed() = 3;
+    void registrationResumed();
 
     /**
      * Notifies the application when its current IMS connection is suspended,
      * meaning there is no data throughput.
      */
-    void registrationSuspended() = 4;
+    void registrationSuspended();
 
     /**
      * Notifies the application when its current IMS connection is updated
@@ -67,7 +84,7 @@ interface IImsRegistrationListener {
      *    If {@code event} is 0, meaning the specified service is removed from the IMS connection.
      *    Else ({@code event} is 1), meaning the specified service is added to the IMS connection.
      */
-    void registrationServiceCapabilityChanged(int serviceClass, int event) = 5;
+    void registrationServiceCapabilityChanged(int serviceClass, int event);
 
     /**
      * Notifies the application when features on a particular service enabled or
@@ -78,17 +95,16 @@ interface IImsRegistrationListener {
      * @param disabledFeatures features disabled as defined in com.android.ims.ImsConfig#FeatureConstants.
      */
     void registrationFeatureCapabilityChanged(int serviceClass,
-            in int[] enabledFeatures, in int[] disabledFeatures) = 6;
+            in int[] enabledFeatures, in int[] disabledFeatures);
 
     /**
      * Updates the application with the waiting voice message count.
      * @param count The number of waiting voice messages.
      */
-    void voiceMessageCountUpdate(int count) = 7;
+    void voiceMessageCountUpdate(int count);
 
     /**
-     * Compatibility with AOSP
+     * Notifies the application when the list of URIs associated with IMS client is updated.
      */
-    void registrationConnected() = 8;
-    void registrationProgressing() = 9;
+    void registrationAssociatedUriChanged(in Uri[] uris);
 }

@@ -24,8 +24,10 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 
 #include <private/android_filesystem_config.h> // for AID_SYSTEM
+#include <private/regionalization/Environment.h>
 
 #include "androidfw/Asset.h"
 #include "androidfw/AssetManager.h"
@@ -82,6 +84,15 @@ static struct sparsearray_offsets_t
     jmethodID put;
 } gSparseArrayOffsets;
 
+static struct configuration_offsets_t
+{
+    jclass classObject;
+    jmethodID constructor;
+    jfieldID mSmallestScreenWidthDpOffset;
+    jfieldID mScreenWidthDpOffset;
+    jfieldID mScreenHeightDpOffset;
+} gConfigurationOffsets;
+
 jclass g_stringClass = NULL;
 
 // ----------------------------------------------------------------------------
@@ -119,7 +130,7 @@ jint copyValue(JNIEnv* env, jobject outValue, const ResTable* table,
 }
 
 // This is called by zygote (running as user root) as part of preloadResources.
-static void verifySystemIdmaps()
+static void verifySystemIdmaps(const char* overlay_dir)
 {
     pid_t pid;
     char system_id[10];
@@ -162,11 +173,33 @@ static void verifySystemIdmaps()
                     exit(1);
                 }
 
-                execl(AssetManager::IDMAP_BIN, AssetManager::IDMAP_BIN, "--scan",
-                        AssetManager::OVERLAY_DIR, AssetManager::TARGET_PACKAGE_NAME,
-                        AssetManager::TARGET_APK_PATH, AssetManager::IDMAP_DIR, (char*)NULL);
-                ALOGE("failed to execl for idmap: %s", strerror(errno));
-                exit(1); // should never get here
+                // Generic idmap parameters
+                const char* argv[7];
+                int argc = 0;
+                struct stat st;
+
+                memset(argv, NULL, sizeof(argv));
+                argv[argc++] = AssetManager::IDMAP_BIN;
+                argv[argc++] = "--scan";
+                argv[argc++] = AssetManager::TARGET_PACKAGE_NAME;
+                argv[argc++] = AssetManager::TARGET_APK_PATH;
+                argv[argc++] = AssetManager::IDMAP_DIR;
+
+                // Directories to scan for overlays
+                // /vendor/overlay
+
+               if (stat(overlay_dir, &st) == 0) {
+                   argv[argc++] = overlay_dir;
+                }
+
+                // Finally, invoke idmap (if any overlay directory exists)
+                if (argc > 5) {
+                    execv(AssetManager::IDMAP_BIN, (char* const*)argv);
+                    ALOGE("failed to execl for idmap: %s", strerror(errno));
+                    exit(1); // should never get here
+                } else {
+                    exit(0);
+                }
             }
             break;
         default: // parent
@@ -501,7 +534,7 @@ static jlong android_content_AssetManager_getAssetRemainingLength(JNIEnv* env, j
 }
 
 static jint android_content_AssetManager_addAssetPath(JNIEnv* env, jobject clazz,
-                                                       jstring path)
+                                                       jstring path, jboolean appAsLib)
 {
     ScopedUtfChars path8(env, path);
     if (path8.c_str() == NULL) {
@@ -514,147 +547,28 @@ static jint android_content_AssetManager_addAssetPath(JNIEnv* env, jobject clazz
     }
 
     int32_t cookie;
-    bool res = am->addAssetPath(String8(path8.c_str()), &cookie);
+    bool res = am->addAssetPath(String8(path8.c_str()), &cookie, appAsLib);
 
     return (res) ? static_cast<jint>(cookie) : 0;
 }
 
 static jint android_content_AssetManager_addOverlayPath(JNIEnv* env, jobject clazz,
-                                                     jstring idmapPath,
-                                                     jstring packagePath,
-                                                     jstring resApkPath, jstring targetPkgPath,
-                                                     jstring prefixPath)
+                                                     jstring idmapPath)
 {
     ScopedUtfChars idmapPath8(env, idmapPath);
     if (idmapPath8.c_str() == NULL) {
         return 0;
     }
 
-    ScopedUtfChars packagePath8(env, packagePath);
-    if (packagePath8.c_str() == NULL) {
-        return 0;
-    }
-
-    ScopedUtfChars resApkPath8(env, resApkPath);
-    if (resApkPath8.c_str() == NULL) {
-        return 0;
-    }
-
-    ScopedUtfChars prefixPath8(env, prefixPath);
-    if (prefixPath8.c_str() == NULL) {
-        return 0;
-    }
-
-    ScopedUtfChars targetPkgPath8(env, targetPkgPath);
-    if (targetPkgPath8.c_str() == NULL) {
-        return 0;
-    }
-
     AssetManager* am = assetManagerForJavaObject(env, clazz);
     if (am == NULL) {
         return 0;
     }
 
     int32_t cookie;
-    bool res = am->addOverlayPath(
-            String8(idmapPath8.c_str()),
-            String8(packagePath8.c_str()),
-            &cookie,
-            String8(resApkPath8.c_str()),
-            String8(targetPkgPath8.c_str()),
-            String8(prefixPath8.c_str()));
+    bool res = am->addOverlayPath(String8(idmapPath8.c_str()), &cookie);
 
     return (res) ? (jint)cookie : 0;
-}
-
-static jint android_content_AssetManager_addCommonOverlayPath(JNIEnv* env, jobject clazz,
-                                                     jstring packagePath,
-                                                     jstring resApkPath, jstring prefixPath)
-{
-    ScopedUtfChars packagePath8(env, packagePath);
-    if (packagePath8.c_str() == NULL) {
-        return 0;
-    }
-
-    ScopedUtfChars resApkPath8(env, resApkPath);
-    if (resApkPath8.c_str() == NULL) {
-        return 0;
-    }
-
-    ScopedUtfChars prefixPath8(env, prefixPath);
-    if (prefixPath8.c_str() == NULL) {
-        return 0;
-    }
-
-    if (!access(packagePath8.c_str(), R_OK) == 0 ||
-        !access(resApkPath8.c_str(), R_OK) == 0) {
-        return 0;
-    }
-
-    AssetManager* am = assetManagerForJavaObject(env, clazz);
-    if (am == NULL) {
-        return 0;
-    }
-
-    int32_t cookie;
-    bool res = am->addCommonOverlayPath(String8(packagePath8.c_str()), &cookie,
-            String8(resApkPath8.c_str()),
-            String8(prefixPath8.c_str()));
-
-    return (res) ? (jint)cookie : 0;
-}
-
-static jint android_content_AssetManager_addIconPath(JNIEnv* env, jobject clazz,
-                                                     jstring packagePath,
-                                                     jstring resApkPath, jstring prefixPath,
-                                                     jint pkgIdOverride)
-{
-    ScopedUtfChars packagePath8(env, packagePath);
-    if (packagePath8.c_str() == NULL) {
-        return 0;
-    }
-
-    ScopedUtfChars resApkPath8(env, resApkPath);
-    if (resApkPath8.c_str() == NULL) {
-        return 0;
-    }
-
-    ScopedUtfChars prefixPath8(env, prefixPath);
-    if (prefixPath8.c_str() == NULL) {
-        return 0;
-    }
-
-    AssetManager* am = assetManagerForJavaObject(env, clazz);
-    if (am == NULL) {
-        return 0;
-    }
-
-    int32_t cookie;
-    bool res = am->addIconPath(String8(packagePath8.c_str()), &cookie,
-                               String8(resApkPath8.c_str()),
-                               String8(prefixPath8.c_str()), pkgIdOverride);
-
-    return (res) ? (jint)cookie : 0;
-}
-
-static jboolean android_content_AssetManager_removeOverlayPath(JNIEnv* env, jobject clazz,
-            jstring packageName, jint cookie)
-{
-    if (packageName == NULL) {
-        jniThrowException(env, "java/lang/NullPointerException", "packageName");
-        return JNI_FALSE;
-    }
-
-    AssetManager* am = assetManagerForJavaObject(env, clazz);
-    if (am == NULL) {
-        return JNI_FALSE;
-    }
-
-    const char* name8 = env->GetStringUTFChars(packageName, NULL);
-    bool res = am->removeOverlayPath(String8(name8), cookie);
-    env->ReleaseStringUTFChars(packageName, name8);
-
-    return res;
 }
 
 static jboolean android_content_AssetManager_isUpToDate(JNIEnv* env, jobject clazz)
@@ -666,23 +580,7 @@ static jboolean android_content_AssetManager_isUpToDate(JNIEnv* env, jobject cla
     return am->isUpToDate() ? JNI_TRUE : JNI_FALSE;
 }
 
-static void android_content_AssetManager_setLocale(JNIEnv* env, jobject clazz,
-                                                jstring locale)
-{
-    ScopedUtfChars locale8(env, locale);
-    if (locale8.c_str() == NULL) {
-        return;
-    }
-
-    AssetManager* am = assetManagerForJavaObject(env, clazz);
-    if (am == NULL) {
-        return;
-    }
-
-    am->setLocale(locale8.c_str());
-}
-
-static jobjectArray android_content_AssetManager_getLocales(JNIEnv* env, jobject clazz)
+static jobjectArray getLocales(JNIEnv* env, jobject clazz, bool includeSystemLocales)
 {
     Vector<String8> locales;
 
@@ -691,7 +589,7 @@ static jobjectArray android_content_AssetManager_getLocales(JNIEnv* env, jobject
         return NULL;
     }
 
-    am->getLocales(&locales);
+    am->getLocales(&locales, includeSystemLocales);
 
     const int N = locales.size();
 
@@ -710,6 +608,66 @@ static jobjectArray android_content_AssetManager_getLocales(JNIEnv* env, jobject
     }
 
     return result;
+}
+
+static jobjectArray android_content_AssetManager_getLocales(JNIEnv* env, jobject clazz)
+{
+    return getLocales(env, clazz, true /* include system locales */);
+}
+
+static jobjectArray android_content_AssetManager_getNonSystemLocales(JNIEnv* env, jobject clazz)
+{
+    return getLocales(env, clazz, false /* don't include system locales */);
+}
+
+static jobject constructConfigurationObject(JNIEnv* env, const ResTable_config& config) {
+    jobject result = env->NewObject(gConfigurationOffsets.classObject,
+            gConfigurationOffsets.constructor);
+    if (result == NULL) {
+        return NULL;
+    }
+
+    env->SetIntField(result, gConfigurationOffsets.mSmallestScreenWidthDpOffset,
+            config.smallestScreenWidthDp);
+    env->SetIntField(result, gConfigurationOffsets.mScreenWidthDpOffset, config.screenWidthDp);
+    env->SetIntField(result, gConfigurationOffsets.mScreenHeightDpOffset, config.screenHeightDp);
+
+    return result;
+}
+
+static jobjectArray getSizeConfigurationsInternal(JNIEnv* env,
+        const Vector<ResTable_config>& configs) {
+    const int N = configs.size();
+    jobjectArray result = env->NewObjectArray(N, gConfigurationOffsets.classObject, NULL);
+    if (result == NULL) {
+        return NULL;
+    }
+
+    for (int i=0; i<N; i++) {
+        jobject config = constructConfigurationObject(env, configs[i]);
+        if (config == NULL) {
+            env->DeleteLocalRef(result);
+            return NULL;
+        }
+
+        env->SetObjectArrayElement(result, i, config);
+        env->DeleteLocalRef(config);
+    }
+
+    return result;
+}
+
+static jobjectArray android_content_AssetManager_getSizeConfigurations(JNIEnv* env, jobject clazz) {
+    AssetManager* am = assetManagerForJavaObject(env, clazz);
+    if (am == NULL) {
+        return NULL;
+    }
+
+    const ResTable& res(am->getResources());
+    Vector<ResTable_config> configs;
+    res.getConfigurations(&configs, false /* ignoreMipmap */, true /* ignoreAndroidPackage */);
+
+    return getSizeConfigurationsInternal(env, configs);
 }
 
 static void android_content_AssetManager_setConfiguration(JNIEnv* env, jobject clazz,
@@ -1258,7 +1216,7 @@ static jboolean android_content_AssetManager_resolveAttrs(JNIEnv* env, jobject c
     const ResTable::bag_entry* defStyleStart = NULL;
     uint32_t defStyleTypeSetFlags = 0;
     ssize_t bagOff = defStyleRes != 0
-            ? res.getBagLocked(defStyleRes, &defStyleStart, &defStyleTypeSetFlags, true) : -1;
+            ? res.getBagLocked(defStyleRes, &defStyleStart, &defStyleTypeSetFlags) : -1;
     defStyleTypeSetFlags |= defStyleBagTypeSetFlags;
     const ResTable::bag_entry* const defStyleEnd = defStyleStart + (bagOff >= 0 ? bagOff : 0);
     BagAttributeFinder defStyleAttrFinder(defStyleStart, defStyleEnd);
@@ -1477,7 +1435,7 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
     const ResTable::bag_entry* defStyleAttrStart = NULL;
     uint32_t defStyleTypeSetFlags = 0;
     ssize_t bagOff = defStyleRes != 0
-            ? res.getBagLocked(defStyleRes, &defStyleAttrStart, &defStyleTypeSetFlags, true) : -1;
+            ? res.getBagLocked(defStyleRes, &defStyleAttrStart, &defStyleTypeSetFlags) : -1;
     defStyleTypeSetFlags |= defStyleBagTypeSetFlags;
     const ResTable::bag_entry* const defStyleAttrEnd = defStyleAttrStart + (bagOff >= 0 ? bagOff : 0);
     BagAttributeFinder defStyleAttrFinder(defStyleAttrStart, defStyleAttrEnd);
@@ -1485,7 +1443,7 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
     // Retrieve the style class bag, if requested.
     const ResTable::bag_entry* styleAttrStart = NULL;
     uint32_t styleTypeSetFlags = 0;
-    bagOff = style != 0 ? res.getBagLocked(style, &styleAttrStart, &styleTypeSetFlags, true) : -1;
+    bagOff = style != 0 ? res.getBagLocked(style, &styleAttrStart, &styleTypeSetFlags) : -1;
     styleTypeSetFlags |= styleBagTypeSetFlags;
     const ResTable::bag_entry* const styleAttrEnd = styleAttrStart + (bagOff >= 0 ? bagOff : 0);
     BagAttributeFinder styleAttrFinder(styleAttrStart, styleAttrEnd);
@@ -1829,7 +1787,7 @@ static jint android_content_AssetManager_retrieveArray(JNIEnv* env, jobject claz
 
     const ResTable::bag_entry* arrayEnt = NULL;
     uint32_t arrayTypeSetFlags = 0;
-    ssize_t bagOff = res.getBagLocked(id, &arrayEnt, &arrayTypeSetFlags, true);
+    ssize_t bagOff = res.getBagLocked(id, &arrayEnt, &arrayTypeSetFlags);
     const ResTable::bag_entry* endArrayEnt = arrayEnt +
         (bagOff >= 0 ? bagOff : 0);
 
@@ -2121,7 +2079,20 @@ static jintArray android_content_AssetManager_getStyleAttributes(JNIEnv* env, jo
 static void android_content_AssetManager_init(JNIEnv* env, jobject clazz, jboolean isSystem)
 {
     if (isSystem) {
-        verifySystemIdmaps();
+        // Load frameworks-res.apk's overlay through regionalization environment
+        if (Environment::isSupported()) {
+            Environment* environment = new Environment();
+            if (environment != NULL) {
+                const char* overlay_dir = environment->getOverlayDir();
+                if (overlay_dir != NULL && strcmp(overlay_dir, "") != 0) {
+                    ALOGD("Regionalization - getOverlayDir:%s", overlay_dir);
+                    verifySystemIdmaps(overlay_dir);
+                }
+                delete environment;
+            }
+        }
+
+        verifySystemIdmaps(AssetManager::OVERLAY_DIR);
     }
     AssetManager* am = new AssetManager();
     if (am == NULL) {
@@ -2167,56 +2138,12 @@ static jint android_content_AssetManager_getGlobalAssetManagerCount(JNIEnv* env,
     return AssetManager::getGlobalCount();
 }
 
-static jint android_content_AssetManager_getBasePackageCount(JNIEnv* env, jobject clazz)
-{
-    AssetManager* am = assetManagerForJavaObject(env, clazz);
-    if (am == NULL) {
-        return JNI_FALSE;
-    }
-
-    return am->getResources().getBasePackageCount();
-}
-
-static jstring android_content_AssetManager_getBasePackageName(JNIEnv* env, jobject clazz,
-                                                               jint index)
-{
-    AssetManager* am = assetManagerForJavaObject(env, clazz);
-    if (am == NULL) {
-        return JNI_FALSE;
-    }
-
-    String16 packageName(am->getBasePackageName(index));
-    return env->NewString((const jchar*)packageName.string(), packageName.size());
-}
-
-static jstring android_content_AssetManager_getBaseResourcePackageName(JNIEnv* env, jobject clazz,
-                                                                       jint index)
-{
-    AssetManager* am = assetManagerForJavaObject(env, clazz);
-    if (am == NULL) {
-        return JNI_FALSE;
-    }
-
-    String16 packageName(am->getResources().getBasePackageName(index));
-    return env->NewString((const jchar*)packageName.string(), packageName.size());
-}
-
-static jint android_content_AssetManager_getBasePackageId(JNIEnv* env, jobject clazz, jint index)
-{
-    AssetManager* am = assetManagerForJavaObject(env, clazz);
-    if (am == NULL) {
-        return JNI_FALSE;
-    }
-
-    return am->getResources().getBasePackageId(index);
-}
-
 // ----------------------------------------------------------------------------
 
 /*
  * JNI registration.
  */
-static JNINativeMethod gAssetManagerMethods[] = {
+static const JNINativeMethod gAssetManagerMethods[] = {
     /* name, signature, funcPtr */
 
     // Basic asset stuff.
@@ -2238,55 +2165,43 @@ static JNINativeMethod gAssetManagerMethods[] = {
         (void*) android_content_AssetManager_readAsset },
     { "seekAsset",      "(JJI)J",
         (void*) android_content_AssetManager_seekAsset },
-    { "getAssetLength", "(J)J",
+    { "getAssetLength", "!(J)J",
         (void*) android_content_AssetManager_getAssetLength },
-    { "getAssetRemainingLength", "(J)J",
+    { "getAssetRemainingLength", "!(J)J",
         (void*) android_content_AssetManager_getAssetRemainingLength },
-    { "addAssetPathNative", "(Ljava/lang/String;)I",
+    { "addAssetPathNative", "(Ljava/lang/String;Z)I",
         (void*) android_content_AssetManager_addAssetPath },
-    { "addOverlayPathNative",   "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+    { "addOverlayPathNative",   "(Ljava/lang/String;)I",
         (void*) android_content_AssetManager_addOverlayPath },
-    { "addCommonOverlayPathNative",   "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
-        (void*) android_content_AssetManager_addCommonOverlayPath },
-    { "addIconPathNative",   "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)I",
-        (void*) android_content_AssetManager_addIconPath },
-    { "removeOverlayPathNative",   "(Ljava/lang/String;I)Z",
-        (void*) android_content_AssetManager_removeOverlayPath },
-    { "getBasePackageCount", "()I",
-        (void*) android_content_AssetManager_getBasePackageCount },
-    { "getBasePackageName", "(I)Ljava/lang/String;",
-        (void*) android_content_AssetManager_getBasePackageName },
-    { "getBaseResourcePackageName", "(I)Ljava/lang/String;",
-        (void*) android_content_AssetManager_getBaseResourcePackageName },
-    { "getBasePackageId", "(I)I",
-        (void*) android_content_AssetManager_getBasePackageId },
     { "isUpToDate",     "()Z",
         (void*) android_content_AssetManager_isUpToDate },
 
     // Resources.
-    { "setLocale",      "(Ljava/lang/String;)V",
-        (void*) android_content_AssetManager_setLocale },
     { "getLocales",      "()[Ljava/lang/String;",
         (void*) android_content_AssetManager_getLocales },
-    { "setConfiguration", "(IILjava/lang/String;IIIIIIIIIIIIII)V",
+    { "getNonSystemLocales", "()[Ljava/lang/String;",
+        (void*) android_content_AssetManager_getNonSystemLocales },
+    { "getSizeConfigurations", "()[Landroid/content/res/Configuration;",
+        (void*) android_content_AssetManager_getSizeConfigurations },
+    { "setConfiguration", "!(IILjava/lang/String;IIIIIIIIIIIIII)V",
         (void*) android_content_AssetManager_setConfiguration },
-    { "getResourceIdentifier","(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+    { "getResourceIdentifier","!(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
         (void*) android_content_AssetManager_getResourceIdentifier },
-    { "getResourceName","(I)Ljava/lang/String;",
+    { "getResourceName","!(I)Ljava/lang/String;",
         (void*) android_content_AssetManager_getResourceName },
-    { "getResourcePackageName","(I)Ljava/lang/String;",
+    { "getResourcePackageName","!(I)Ljava/lang/String;",
         (void*) android_content_AssetManager_getResourcePackageName },
-    { "getResourceTypeName","(I)Ljava/lang/String;",
+    { "getResourceTypeName","!(I)Ljava/lang/String;",
         (void*) android_content_AssetManager_getResourceTypeName },
-    { "getResourceEntryName","(I)Ljava/lang/String;",
+    { "getResourceEntryName","!(I)Ljava/lang/String;",
         (void*) android_content_AssetManager_getResourceEntryName },
-    { "loadResourceValue","(ISLandroid/util/TypedValue;Z)I",
+    { "loadResourceValue","!(ISLandroid/util/TypedValue;Z)I",
         (void*) android_content_AssetManager_loadResourceValue },
-    { "loadResourceBagValue","(IILandroid/util/TypedValue;Z)I",
+    { "loadResourceBagValue","!(IILandroid/util/TypedValue;Z)I",
         (void*) android_content_AssetManager_loadResourceBagValue },
-    { "getStringBlockCount","()I",
+    { "getStringBlockCount","!()I",
         (void*) android_content_AssetManager_getStringBlockCount },
-    { "getNativeStringBlock","(I)J",
+    { "getNativeStringBlock","!(I)J",
         (void*) android_content_AssetManager_getNativeStringBlock },
     { "getCookieName","(I)Ljava/lang/String;",
         (void*) android_content_AssetManager_getCookieName },
@@ -2304,21 +2219,21 @@ static JNINativeMethod gAssetManagerMethods[] = {
         (void*) android_content_AssetManager_copyTheme },
     { "clearTheme", "(J)V",
         (void*) android_content_AssetManager_clearTheme },
-    { "loadThemeAttributeValue", "(JILandroid/util/TypedValue;Z)I",
+    { "loadThemeAttributeValue", "!(JILandroid/util/TypedValue;Z)I",
         (void*) android_content_AssetManager_loadThemeAttributeValue },
-    { "getThemeChangingConfigurations", "(J)I",
+    { "getThemeChangingConfigurations", "!(J)I",
         (void*) android_content_AssetManager_getThemeChangingConfigurations },
     { "dumpTheme", "(JILjava/lang/String;Ljava/lang/String;)V",
         (void*) android_content_AssetManager_dumpTheme },
-    { "applyStyle","(JIIJ[I[I[I)Z",
+    { "applyStyle","!(JIIJ[I[I[I)Z",
         (void*) android_content_AssetManager_applyStyle },
-    { "resolveAttrs","(JII[I[I[I[I)Z",
+    { "resolveAttrs","!(JII[I[I[I[I)Z",
         (void*) android_content_AssetManager_resolveAttrs },
-    { "retrieveAttributes","(J[I[I[I)Z",
+    { "retrieveAttributes","!(J[I[I[I)Z",
         (void*) android_content_AssetManager_retrieveAttributes },
-    { "getArraySize","(I)I",
+    { "getArraySize","!(I)I",
         (void*) android_content_AssetManager_getArraySize },
-    { "retrieveArray","(I[I)I",
+    { "retrieveArray","!(I[I)I",
         (void*) android_content_AssetManager_retrieveArray },
 
     // XML files.
@@ -2328,11 +2243,11 @@ static JNINativeMethod gAssetManagerMethods[] = {
     // Arrays.
     { "getArrayStringResource","(I)[Ljava/lang/String;",
         (void*) android_content_AssetManager_getArrayStringResource },
-    { "getArrayStringInfo","(I)[I",
+    { "getArrayStringInfo","!(I)[I",
         (void*) android_content_AssetManager_getArrayStringInfo },
-    { "getArrayIntResource","(I)[I",
+    { "getArrayIntResource","!(I)[I",
         (void*) android_content_AssetManager_getArrayIntResource },
-    { "getStyleAttributes","(I)[I",
+    { "getStyleAttributes","!(I)[I",
         (void*) android_content_AssetManager_getStyleAttributes },
 
     // Bookkeeping.
@@ -2379,6 +2294,17 @@ int register_android_content_AssetManager(JNIEnv* env)
                                                        "<init>", "()V");
     gSparseArrayOffsets.put = GetMethodIDOrDie(env, gSparseArrayOffsets.classObject, "put",
                                                "(ILjava/lang/Object;)V");
+
+    jclass configurationClass = FindClassOrDie(env, "android/content/res/Configuration");
+    gConfigurationOffsets.classObject = MakeGlobalRefOrDie(env, configurationClass);
+    gConfigurationOffsets.constructor = GetMethodIDOrDie(env, configurationClass,
+            "<init>", "()V");
+    gConfigurationOffsets.mSmallestScreenWidthDpOffset = GetFieldIDOrDie(env, configurationClass,
+            "smallestScreenWidthDp", "I");
+    gConfigurationOffsets.mScreenWidthDpOffset = GetFieldIDOrDie(env, configurationClass,
+            "screenWidthDp", "I");
+    gConfigurationOffsets.mScreenHeightDpOffset = GetFieldIDOrDie(env, configurationClass,
+            "screenHeightDp", "I");
 
     return RegisterMethodsOrDie(env, "android/content/res/AssetManager", gAssetManagerMethods,
                                 NELEM(gAssetManagerMethods));

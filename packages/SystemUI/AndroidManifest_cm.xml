@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
 /*
- * Copyright (c) 2015 The CyanogenMod Project.
+ * Copyright (c) 2016 The CyanogenMod Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,45 +19,32 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
         package="com.android.systemui">
 
-    <uses-permission android:name="cyanogenmod.permission.WRITE_SETTINGS" />
     <uses-permission android:name="cyanogenmod.permission.WRITE_SECURE_SETTINGS" />
-    <!-- Quick Settings Tile Listener -->
-    <uses-permission android:name="cyanogenmod.permission.BIND_CUSTOM_TILE_LISTENER_SERVICE"/>
-
-    <!-- Development shortcut -->
-    <uses-permission android:name="android.permission.CLEAR_APP_USER_DATA" />
-    <uses-permission android:name="android.permission.FORCE_STOP_PACKAGES" />
-
-    <!-- Sync tile -->
-    <uses-permission android:name="android.permission.READ_SYNC_SETTINGS" />
-    <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
-
-    <!-- Publish dynamic tiles -->
-    <uses-permission android:name="cyanogenmod.permission.PUBLISH_CUSTOM_TILE" />
-
-    <uses-permission android:name="cyanogenmod.permission.HARDWARE_ABSTRACTION_ACCESS" />
+    <uses-permission android:name="cyanogenmod.permission.WRITE_SETTINGS" />
 
     <!-- Visualizer -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- Performance Manager -->
-    <uses-permission android:name="cyanogenmod.permission.PERFORMANCE_ACCESS" />
-
-    <!-- Live lock screen manager -->
-    <uses-permission android:name="cyanogenmod.permission.LIVE_LOCK_SCREEN_MANAGER_ACCESS_PRIVATE" />
-
-    <!-- Theme manager -->
-    <uses-permission android:name="cyanogenmod.permission.ACCESS_THEME_MANAGER" />
-
-    <!-- NFC Tile -->
-    <uses-permission android:name="android.permission.NFC" />
+     <!-- Weather Provider -->
+    <uses-permission android:name="cyanogenmod.permission.READ_WEATHER" />
+    <protected-broadcast android:name="com.cyanogenmod.lockclock.action.FORCE_WEATHER_UPDATE" />
 
     <application>
-        <provider android:name=".cm.SpamMessageProvider"
-                  android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"
-                  android:exported="true"
-                  android:authorities="com.cyanogenmod.spam" />
+
+        <activity-alias
+            android:name=".tuner.NavBarTuner"
+            android:targetActivity=".tuner.TunerActivity"
+            android:icon="@drawable/tuner"
+            android:theme="@style/TunerSettings"
+            android:label="@string/nav_bar"
+            android:process=":tuner"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.android.settings.action.NAV_BAR_TUNER" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
 
         <activity
             android:name=".cm.LockscreenShortcutsActivity"
@@ -65,22 +52,8 @@
             android:label="@string/lockscreen_targets_message"
             android:theme="@android:style/Theme.Material.Settings"
             android:process=":cmsettings"
-            android:exported="true" />
+            android:exported="true">
+        </activity>
 
-        <activity android:name=".tuner.TunerActivity$DemoModeActivity"
-          android:icon="@drawable/tuner"
-          android:theme="@android:style/Theme.Material.Settings"
-          android:label="@string/demo_mode"
-          android:process=":tuner"
-          android:exported="true"
-          android:permission="android.permission.STATUS_BAR" />
-
-        <activity android:name=".tuner.TunerActivity$StatusBarIconActivity"
-          android:icon="@drawable/tuner"
-          android:theme="@android:style/Theme.Material.Settings"
-          android:label="@string/status_bar"
-          android:process=":tuner"
-          android:exported="true"
-          android:permission="android.permission.STATUS_BAR" />
     </application>
 </manifest>

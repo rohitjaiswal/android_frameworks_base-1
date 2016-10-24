@@ -85,6 +85,7 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
     private Rect mTempRect = new Rect();
     private KeyguardMessageArea mSecurityMessageDisplay;
     private View mEcaView;
+    private int mMaxCountdownTimes;
     private ViewGroup mContainer;
     private int mDisappearYTranslation;
 
@@ -126,6 +127,8 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
+        mMaxCountdownTimes = mContext.getResources()
+                .getInteger(R.integer.config_max_unlock_countdown_times);
         mLockPatternUtils = mLockPatternUtils == null
                 ? new LockPatternUtils(mContext) : mLockPatternUtils;
 
@@ -140,9 +143,6 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
         mLockPatternView.setShowErrorPath(mLockPatternUtils.isShowErrorPath(
                 KeyguardUpdateMonitor.getCurrentUser()));
 
-        // stealth mode will be the same for the life of this screen
-        mLockPatternView.setInStealthMode(!mLockPatternUtils.isVisiblePatternEnabled(
-                KeyguardUpdateMonitor.getCurrentUser()));
         setFocusableInTouchMode(true);
 
         // vibrate mode will be the same for the life of this screen
@@ -184,6 +184,8 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
     @Override
     public void reset() {
         // reset lock pattern
+        mLockPatternView.setInStealthMode(!mLockPatternUtils.isVisiblePatternEnabled(
+                KeyguardUpdateMonitor.getCurrentUser()));
         mLockPatternView.enableInput();
         mLockPatternView.setEnabled(true);
         mLockPatternView.clearPattern();
@@ -199,7 +201,7 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
     }
 
     private void displayDefaultSecurityMessage() {
-        mSecurityMessageDisplay.setMessage(R.string.kg_pattern_instructions, false);
+        mSecurityMessageDisplay.setMessage(getMessageWithCount(R.string.kg_pattern_instructions), false);
     }
 
     @Override
@@ -237,22 +239,23 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
                 mPendingLockCheck.cancel(false);
             }
 
+            final int userId = KeyguardUpdateMonitor.getCurrentUser();
             if (pattern.size() < LockPatternUtils.MIN_PATTERN_REGISTER_FAIL) {
                 mLockPatternView.enableInput();
-                onPatternChecked(false, 0, false /* not valid - too short */);
+                onPatternChecked(userId, false, 0, false /* not valid - too short */);
                 return;
             }
 
             mPendingLockCheck = LockPatternChecker.checkPattern(
                     mLockPatternUtils,
                     pattern,
-                    KeyguardUpdateMonitor.getCurrentUser(),
+                    userId,
                     new LockPatternChecker.OnCheckCallback() {
                         @Override
                         public void onChecked(boolean matched, int timeoutMs) {
                             mLockPatternView.enableInput();
                             mPendingLockCheck = null;
-                            onPatternChecked(matched, timeoutMs, true);
+                            onPatternChecked(userId, matched, timeoutMs, true);
                         }
                     });
             if (pattern.size() > MIN_PATTERN_BEFORE_POKE_WAKELOCK) {
@@ -260,28 +263,45 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
             }
         }
 
-        private void onPatternChecked(boolean matched, int timeoutMs, boolean isValidPattern) {
+        private void onPatternChecked(int userId, boolean matched, int timeoutMs,
+                boolean isValidPattern) {
+            boolean dismissKeyguard = KeyguardUpdateMonitor.getCurrentUser() == userId;
             if (matched) {
                 mLockPatternUtils.sanitizePassword();
-                mCallback.reportUnlockAttempt(true, 0);
-                mLockPatternView.setDisplayMode(LockPatternView.DisplayMode.Correct);
-                mCallback.dismiss(true);
+                mCallback.reportUnlockAttempt(userId, true, 0);
+                if (dismissKeyguard) {
+                    mLockPatternView.setDisplayMode(LockPatternView.DisplayMode.Correct);
+                    mCallback.dismiss(true);
+                }
             } else {
                 mLockPatternView.setDisplayMode(LockPatternView.DisplayMode.Wrong);
                 if (isValidPattern) {
-                    mCallback.reportUnlockAttempt(false, timeoutMs);
-                    if (timeoutMs > 0) {
+                    mCallback.reportUnlockAttempt(userId, false, timeoutMs);
+                    if (!(mMaxCountdownTimes > 0) && timeoutMs > 0) {
                         long deadline = mLockPatternUtils.setLockoutAttemptDeadline(
-                                KeyguardUpdateMonitor.getCurrentUser(), timeoutMs);
+                                userId, timeoutMs);
                         handleAttemptLockout(deadline);
                     }
                 }
                 if (timeoutMs == 0) {
-                    mSecurityMessageDisplay.setMessage(R.string.kg_wrong_pattern, true);
+                    mSecurityMessageDisplay.
+                        setMessage(getMessageWithCount(R.string.kg_wrong_pattern),true);
                     mLockPatternView.postDelayed(mCancelPatternRunnable, PATTERN_CLEAR_TIMEOUT_MS);
                 }
             }
         }
+    }
+
+    private String getMessageWithCount(int msgId) {
+        String msg = getContext().getString(msgId);
+        int remaining = mMaxCountdownTimes
+            - KeyguardUpdateMonitor.getInstance(mContext).getFailedUnlockAttempts(
+            KeyguardUpdateMonitor.getCurrentUser());
+        if (mMaxCountdownTimes > 0 && remaining > 0) {
+            msg += " - " + getContext().getResources().getString(
+                    R.string.kg_remaining_attempts, remaining);
+        }
+        return msg;
     }
 
     private void handleAttemptLockout(long elapsedRealtimeDeadline) {
@@ -345,7 +365,19 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
                 mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_timeout_pattern,
                         true /* important */);
                 break;
+            case PROMPT_REASON_DEVICE_ADMIN:
+                mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_device_admin,
+                        true /* important */);
+                break;
+            case PROMPT_REASON_USER_REQUEST:
+                mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_user_request,
+                        true /* important */);
+                break;
+            case PROMPT_REASON_NONE:
+                break;
             default:
+                mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_timeout_pattern,
+                        true /* important */);
                 break;
         }
     }

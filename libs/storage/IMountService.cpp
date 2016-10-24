@@ -50,7 +50,7 @@ enum {
     TRANSACTION_isExternalStorageEmulated,
     TRANSACTION_decryptStorage,
     TRANSACTION_encryptStorage,
-    TRANSACTION_encryptWipeStorage = IBinder::FIRST_CALL_TRANSACTION + 61,
+    TRANSACTION_encryptWipeStorage = IBinder::FIRST_CALL_TRANSACTION + 72,
 };
 
 class BpMountService: public BpInterface<IMountService>

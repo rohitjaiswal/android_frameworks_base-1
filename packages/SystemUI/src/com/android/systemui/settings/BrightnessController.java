@@ -33,6 +33,7 @@ import android.view.View;
 import android.widget.ImageView;
 
 import com.android.internal.logging.MetricsLogger;
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 
 import java.util.ArrayList;
 
@@ -219,7 +220,7 @@ public class BrightnessController implements ToggleSlider.Listener {
         if (!mAutomatic) {
             final int val = value + mMinimumBacklight;
             if (stopTracking) {
-                MetricsLogger.action(mContext, MetricsLogger.ACTION_BRIGHTNESS, val);
+                MetricsLogger.action(mContext, MetricsEvent.ACTION_BRIGHTNESS, val);
             }
             setBrightness(val);
             if (!tracking) {
@@ -234,7 +235,7 @@ public class BrightnessController implements ToggleSlider.Listener {
         } else {
             final float adj = value / (BRIGHTNESS_ADJ_RESOLUTION / 2f) - 1;
             if (stopTracking) {
-                MetricsLogger.action(mContext, MetricsLogger.ACTION_BRIGHTNESS_AUTO, value);
+                MetricsLogger.action(mContext, MetricsEvent.ACTION_BRIGHTNESS_AUTO, value);
             }
             setBrightnessAdj(adj);
             if (!tracking) {

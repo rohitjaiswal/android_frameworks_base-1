@@ -152,16 +152,21 @@ static jobject getInputWindowHandleObjLocalRef(JNIEnv* env,
             getInputWindowHandleObjLocalRef(env);
 }
 
-static void loadSystemIconAsSprite(JNIEnv* env, jobject contextObj, int32_t style,
-        SpriteIcon* outSpriteIcon) {
-    PointerIcon pointerIcon;
+static void loadSystemIconAsSpriteWithPointerIcon(JNIEnv* env, jobject contextObj, int32_t style,
+        PointerIcon* outPointerIcon, SpriteIcon* outSpriteIcon) {
     status_t status = android_view_PointerIcon_loadSystemIcon(env,
-            contextObj, style, &pointerIcon);
+            contextObj, style, outPointerIcon);
     if (!status) {
-        pointerIcon.bitmap.copyTo(&outSpriteIcon->bitmap, kN32_SkColorType);
-        outSpriteIcon->hotSpotX = pointerIcon.hotSpotX;
-        outSpriteIcon->hotSpotY = pointerIcon.hotSpotY;
+        outPointerIcon->bitmap.copyTo(&outSpriteIcon->bitmap, kN32_SkColorType);
+        outSpriteIcon->hotSpotX = outPointerIcon->hotSpotX;
+        outSpriteIcon->hotSpotY = outPointerIcon->hotSpotY;
     }
+}
+
+static void loadSystemIconAsSprite(JNIEnv* env, jobject contextObj, int32_t style,
+                                   SpriteIcon* outSpriteIcon) {
+    PointerIcon pointerIcon;
+    loadSystemIconAsSpriteWithPointerIcon(env, contextObj, style, &pointerIcon, outSpriteIcon);
 }
 
 enum {
@@ -197,10 +202,12 @@ public:
     void setSystemUiVisibility(int32_t visibility);
     void setPointerSpeed(int32_t speed);
     void setShowTouches(bool enabled);
-    void setStylusIconEnabled(bool enabled);
     void setVolumeKeysRotation(int mode);
     void setInteractive(bool interactive);
     void reloadCalibration();
+    void setPointerIconType(int32_t iconId);
+    void reloadPointerIcons();
+    void setCustomPointerIcon(const SpriteIcon& icon);
 
     /* --- InputReaderPolicyInterface implementation --- */
 
@@ -238,7 +245,12 @@ public:
 
     /* --- PointerControllerPolicyInterface implementation --- */
 
+    virtual void loadPointerIcon(SpriteIcon* icon);
     virtual void loadPointerResources(PointerResources* outResources);
+    virtual void loadAdditionalMouseResources(std::map<int32_t, SpriteIcon>* outResources,
+            std::map<int32_t, PointerAnimation>* outAnimationResources);
+    virtual int32_t getDefaultPointerIconId();
+    virtual int32_t getCustomPointerIconId();
 
 private:
     sp<InputManager> mInputManager;
@@ -264,9 +276,6 @@ private:
 
         // Show touches feature enable/disable.
         bool showTouches;
-
-        // Show icon when stylus is used
-        bool stylusIconEnabled;
 
         // Volume keys rotation mode (0 - off, 1 - phone, 2 - tablet)
         int32_t volumeKeysRotationMode;
@@ -307,7 +316,6 @@ NativeInputManager::NativeInputManager(jobject contextObj,
         mLocked.pointerSpeed = 0;
         mLocked.pointerGesturesEnabled = true;
         mLocked.showTouches = false;
-        mLocked.stylusIconEnabled = false;
         mLocked.volumeKeysRotationMode = 0;
     }
     mInteractive = true;
@@ -456,7 +464,6 @@ void NativeInputManager::getReaderConfiguration(InputReaderConfiguration* outCon
         outConfig->pointerGesturesEnabled = mLocked.pointerGesturesEnabled;
 
         outConfig->showTouches = mLocked.showTouches;
-        outConfig->stylusIconEnabled = mLocked.stylusIconEnabled;
         outConfig->volumeKeysRotationMode = mLocked.volumeKeysRotationMode;
 
         outConfig->setDisplayInfo(false /*external*/, mLocked.internalViewport);
@@ -479,22 +486,6 @@ sp<PointerControllerInterface> NativeInputManager::obtainPointerController(int32
                 v.logicalRight - v.logicalLeft,
                 v.logicalBottom - v.logicalTop,
                 v.orientation);
-
-        JNIEnv* env = jniEnv();
-        jobject pointerIconObj = env->CallObjectMethod(mServiceObj,
-                gServiceClassInfo.getPointerIcon);
-        if (!checkAndClearExceptionFromCallback(env, "getPointerIcon")) {
-            PointerIcon pointerIcon;
-            status_t status = android_view_PointerIcon_load(env, pointerIconObj,
-                    mContextObj, &pointerIcon);
-            if (!status && !pointerIcon.isNullIcon()) {
-                controller->setPointerIcon(SpriteIcon(pointerIcon.bitmap,
-                        pointerIcon.hotSpotX, pointerIcon.hotSpotY));
-            } else {
-                controller->setPointerIcon(SpriteIcon());
-            }
-            env->DeleteLocalRef(pointerIconObj);
-        }
 
         updateInactivityTimeoutLocked(controller);
     }
@@ -782,22 +773,6 @@ void NativeInputManager::setShowTouches(bool enabled) {
             InputReaderConfiguration::CHANGE_SHOW_TOUCHES);
 }
 
-void NativeInputManager::setStylusIconEnabled(bool enabled) {
-    { // acquire lock
-        AutoMutex _l(mLock);
-
-        if (mLocked.stylusIconEnabled == enabled) {
-            return;
-        }
-
-        ALOGI("Setting stylus icon enabled to %s.", enabled ? "enabled" : "disabled");
-        mLocked.stylusIconEnabled = enabled;
-    } // release lock
-
-    mInputManager->getReader()->requestRefreshConfiguration(
-            InputReaderConfiguration::CHANGE_STYLUS_ICON_ENABLED);
-}
-
 void NativeInputManager::setVolumeKeysRotation(int mode) {
     { // acquire lock
         AutoMutex _l(mLock);
@@ -821,6 +796,30 @@ void NativeInputManager::setInteractive(bool interactive) {
 void NativeInputManager::reloadCalibration() {
     mInputManager->getReader()->requestRefreshConfiguration(
             InputReaderConfiguration::CHANGE_TOUCH_AFFINE_TRANSFORMATION);
+}
+
+void NativeInputManager::setPointerIconType(int32_t iconId) {
+    AutoMutex _l(mLock);
+    sp<PointerController> controller = mLocked.pointerController.promote();
+    if (controller != NULL) {
+        controller->updatePointerIcon(iconId);
+    }
+}
+
+void NativeInputManager::reloadPointerIcons() {
+    AutoMutex _l(mLock);
+    sp<PointerController> controller = mLocked.pointerController.promote();
+    if (controller != NULL) {
+        controller->reloadPointerResources();
+    }
+}
+
+void NativeInputManager::setCustomPointerIcon(const SpriteIcon& icon) {
+    AutoMutex _l(mLock);
+    sp<PointerController> controller = mLocked.pointerController.promote();
+    if (controller != NULL) {
+        controller->setCustomPointerIcon(icon);
+    }
 }
 
 TouchAffineTransformation NativeInputManager::getTouchAffineTransformation(
@@ -1062,6 +1061,25 @@ bool NativeInputManager::checkInjectEventsPermissionNonReentrant(
     return result;
 }
 
+void NativeInputManager::loadPointerIcon(SpriteIcon* icon) {
+    JNIEnv* env = jniEnv();
+
+    ScopedLocalRef<jobject> pointerIconObj(env, env->CallObjectMethod(
+            mServiceObj, gServiceClassInfo.getPointerIcon));
+    if (checkAndClearExceptionFromCallback(env, "getPointerIcon")) {
+        return;
+    }
+
+    PointerIcon pointerIcon;
+    status_t status = android_view_PointerIcon_load(env, pointerIconObj.get(),
+                                                    mContextObj, &pointerIcon);
+    if (!status && !pointerIcon.isNullIcon()) {
+        *icon = SpriteIcon(pointerIcon.bitmap, pointerIcon.hotSpotX, pointerIcon.hotSpotY);
+    } else {
+        *icon = SpriteIcon();
+    }
+}
+
 void NativeInputManager::loadPointerResources(PointerResources* outResources) {
     JNIEnv* env = jniEnv();
 
@@ -1073,6 +1091,40 @@ void NativeInputManager::loadPointerResources(PointerResources* outResources) {
             &outResources->spotAnchor);
 }
 
+void NativeInputManager::loadAdditionalMouseResources(std::map<int32_t, SpriteIcon>* outResources,
+        std::map<int32_t, PointerAnimation>* outAnimationResources) {
+    JNIEnv* env = jniEnv();
+
+    for (int iconId = POINTER_ICON_STYLE_CONTEXT_MENU; iconId <= POINTER_ICON_STYLE_GRABBING;
+             ++iconId) {
+        PointerIcon pointerIcon;
+        loadSystemIconAsSpriteWithPointerIcon(
+                env, mContextObj, iconId, &pointerIcon, &((*outResources)[iconId]));
+        if (!pointerIcon.bitmapFrames.empty()) {
+            PointerAnimation& animationData = (*outAnimationResources)[iconId];
+            size_t numFrames = pointerIcon.bitmapFrames.size() + 1;
+            animationData.durationPerFrame =
+                    milliseconds_to_nanoseconds(pointerIcon.durationPerFrame);
+            animationData.animationFrames.reserve(numFrames);
+            animationData.animationFrames.push_back(SpriteIcon(
+                    pointerIcon.bitmap, pointerIcon.hotSpotX, pointerIcon.hotSpotY));
+            for (size_t i = 0; i < numFrames - 1; ++i) {
+              animationData.animationFrames.push_back(SpriteIcon(
+                      pointerIcon.bitmapFrames[i], pointerIcon.hotSpotX, pointerIcon.hotSpotY));
+            }
+        }
+    }
+    loadSystemIconAsSprite(env, mContextObj, POINTER_ICON_STYLE_NULL,
+            &((*outResources)[POINTER_ICON_STYLE_NULL]));
+}
+
+int32_t NativeInputManager::getDefaultPointerIconId() {
+    return POINTER_ICON_STYLE_ARROW;
+}
+
+int32_t NativeInputManager::getCustomPointerIconId() {
+    return POINTER_ICON_STYLE_CUSTOM;
+}
 
 // ----------------------------------------------------------------------------
 
@@ -1273,6 +1325,12 @@ static jint nativeInjectInputEvent(JNIEnv* env, jclass /* clazz */,
     }
 }
 
+static void nativeToggleCapsLock(JNIEnv* env, jclass /* clazz */,
+         jlong ptr, jint deviceId) {
+    NativeInputManager* im = reinterpret_cast<NativeInputManager*>(ptr);
+    im->getInputManager()->getReader()->toggleCapsLockState(deviceId);
+}
+
 static void nativeSetInputWindows(JNIEnv* env, jclass /* clazz */,
         jlong ptr, jobjectArray windowHandleObjArray) {
     NativeInputManager* im = reinterpret_cast<NativeInputManager*>(ptr);
@@ -1334,13 +1392,6 @@ static void nativeSetShowTouches(JNIEnv* /* env */,
     NativeInputManager* im = reinterpret_cast<NativeInputManager*>(ptr);
 
     im->setShowTouches(enabled);
-}
-
-static void nativeSetStylusIconEnabled(JNIEnv* env,
-        jclass clazz, jlong ptr, jboolean enabled) {
-    NativeInputManager* im = reinterpret_cast<NativeInputManager*>(ptr);
-
-    im->setStylusIconEnabled(enabled);
 }
 
 static void nativeSetVolumeKeysRotation(JNIEnv* env,
@@ -1425,9 +1476,33 @@ static void nativeMonitor(JNIEnv* /* env */, jclass /* clazz */, jlong ptr) {
     im->getInputManager()->getDispatcher()->monitor();
 }
 
+static void nativeSetPointerIconType(JNIEnv* /* env */, jclass /* clazz */, jlong ptr, jint iconId) {
+    NativeInputManager* im = reinterpret_cast<NativeInputManager*>(ptr);
+    im->setPointerIconType(iconId);
+}
+
+static void nativeReloadPointerIcons(JNIEnv* /* env */, jclass /* clazz */, jlong ptr) {
+    NativeInputManager* im = reinterpret_cast<NativeInputManager*>(ptr);
+    im->reloadPointerIcons();
+}
+
+static void nativeSetCustomPointerIcon(JNIEnv* env, jclass /* clazz */,
+                                       jlong ptr, jobject iconObj) {
+    NativeInputManager* im = reinterpret_cast<NativeInputManager*>(ptr);
+
+    PointerIcon pointerIcon;
+    android_view_PointerIcon_getLoadedIcon(env, iconObj, &pointerIcon);
+
+    SpriteIcon spriteIcon;
+    pointerIcon.bitmap.copyTo(&spriteIcon.bitmap, kN32_SkColorType);
+    spriteIcon.hotSpotX = pointerIcon.hotSpotX;
+    spriteIcon.hotSpotY = pointerIcon.hotSpotY;
+    im->setCustomPointerIcon(spriteIcon);
+}
+
 // ----------------------------------------------------------------------------
 
-static JNINativeMethod gInputManagerMethods[] = {
+static const JNINativeMethod gInputManagerMethods[] = {
     /* name, signature, funcPtr */
     { "nativeInit",
             "(Lcom/android/server/input/InputManagerService;Landroid/content/Context;Landroid/os/MessageQueue;)J",
@@ -1453,6 +1528,8 @@ static JNINativeMethod gInputManagerMethods[] = {
             (void*) nativeSetInputFilterEnabled },
     { "nativeInjectInputEvent", "(JLandroid/view/InputEvent;IIIIII)I",
             (void*) nativeInjectInputEvent },
+    { "nativeToggleCapsLock", "(JI)V",
+            (void*) nativeToggleCapsLock },
     { "nativeSetInputWindows", "(J[Lcom/android/server/input/InputWindowHandle;)V",
             (void*) nativeSetInputWindows },
     { "nativeSetFocusedApplication", "(JLcom/android/server/input/InputApplicationHandle;)V",
@@ -1467,8 +1544,6 @@ static JNINativeMethod gInputManagerMethods[] = {
             (void*) nativeSetPointerSpeed },
     { "nativeSetShowTouches", "(JZ)V",
             (void*) nativeSetShowTouches },
-    { "nativeSetStylusIconEnabled", "(JZ)V",
-            (void*) nativeSetStylusIconEnabled },
     { "nativeSetVolumeKeysRotation", "(JI)V",
             (void*) nativeSetVolumeKeysRotation },
     { "nativeSetInteractive", "(JZ)V",
@@ -1487,6 +1562,12 @@ static JNINativeMethod gInputManagerMethods[] = {
             (void*) nativeDump },
     { "nativeMonitor", "(J)V",
             (void*) nativeMonitor },
+    { "nativeSetPointerIconType", "(JI)V",
+            (void*) nativeSetPointerIconType },
+    { "nativeReloadPointerIcons", "(J)V",
+            (void*) nativeReloadPointerIcons },
+    { "nativeSetCustomPointerIcon", "(JLandroid/view/PointerIcon;)V",
+            (void*) nativeSetCustomPointerIcon },
 };
 
 #define FIND_CLASS(var, className) \

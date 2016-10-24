@@ -19,14 +19,13 @@ package com.android.systemui;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.content.Context;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
-import android.os.UserHandle;
-import android.provider.Settings;
 import android.view.View;
-import android.view.animation.AnimationUtils;
-import android.view.animation.Interpolator;
+
+import java.util.ArrayList;
 
 /**
  * Helper to invert the colors of views and fade between the states.
@@ -34,17 +33,31 @@ import android.view.animation.Interpolator;
 public class ViewInvertHelper {
 
     private final Paint mDarkPaint = new Paint();
-    private final Interpolator mLinearOutSlowInInterpolator;
-    private final View mTarget;
     private final ColorMatrix mMatrix = new ColorMatrix();
     private final ColorMatrix mGrayscaleMatrix = new ColorMatrix();
     private final long mFadeDuration;
+    private final ArrayList<View> mTargets = new ArrayList<>();
 
-    public ViewInvertHelper(View target, long fadeDuration) {
-        mTarget = target;
-        mLinearOutSlowInInterpolator = AnimationUtils.loadInterpolator(mTarget.getContext(),
-                android.R.interpolator.linear_out_slow_in);
+    public ViewInvertHelper(View v, long fadeDuration) {
+        this(v.getContext(), fadeDuration);
+        addTarget(v);
+    }
+    public ViewInvertHelper(Context context, long fadeDuration) {
         mFadeDuration = fadeDuration;
+    }
+
+    private static ArrayList<View> constructArray(View target) {
+        final ArrayList<View> views = new ArrayList<>();
+        views.add(target);
+        return views;
+    }
+
+    public void clearTargets() {
+        mTargets.clear();
+    }
+
+    public void addTarget(View target) {
+        mTargets.add(target);
     }
 
     public void fade(final boolean invert, long delay) {
@@ -55,34 +68,38 @@ public class ViewInvertHelper {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
                 updateInvertPaint((Float) animation.getAnimatedValue());
-                mTarget.setLayerType(View.LAYER_TYPE_HARDWARE, mDarkPaint);
+                for (int i = 0; i < mTargets.size(); i++) {
+                    mTargets.get(i).setLayerType(View.LAYER_TYPE_HARDWARE, mDarkPaint);
+                }
             }
         });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
                 if (!invert) {
-                    mTarget.setLayerType(View.LAYER_TYPE_NONE, null);
+                    for (int i = 0; i < mTargets.size(); i++) {
+                        mTargets.get(i).setLayerType(View.LAYER_TYPE_NONE, null);
+                    }
                 }
             }
         });
         animator.setDuration(mFadeDuration);
-        animator.setInterpolator(mLinearOutSlowInInterpolator);
+        animator.setInterpolator(Interpolators.LINEAR_OUT_SLOW_IN);
         animator.setStartDelay(delay);
         animator.start();
     }
 
     public void update(boolean invert) {
-        if (invert && isInvertEnabled()) {
+        if (invert) {
             updateInvertPaint(1f);
-            mTarget.setLayerType(View.LAYER_TYPE_HARDWARE, mDarkPaint);
+            for (int i = 0; i < mTargets.size(); i++) {
+                mTargets.get(i).setLayerType(View.LAYER_TYPE_HARDWARE, mDarkPaint);
+            }
         } else {
-            mTarget.setLayerType(View.LAYER_TYPE_NONE, null);
+            for (int i = 0; i < mTargets.size(); i++) {
+                mTargets.get(i).setLayerType(View.LAYER_TYPE_NONE, null);
+            }
         }
-    }
-
-    public View getTarget() {
-        return mTarget;
     }
 
     private void updateInvertPaint(float intensity) {
@@ -99,8 +116,11 @@ public class ViewInvertHelper {
         mDarkPaint.setColorFilter(new ColorMatrixColorFilter(mMatrix));
     }
 
-    private boolean isInvertEnabled() {
-        return Settings.Secure.getIntForUser(mTarget.getContext().getContentResolver(),
-                Settings.Secure.DOZE_NOTIFICATION_INVERT_ENABLED, 1, UserHandle.USER_CURRENT) == 1;
+    public void setInverted(boolean invert, boolean fade, long delay) {
+        if (fade) {
+            fade(invert, delay);
+        } else {
+            update(invert);
+        }
     }
 }

@@ -15,57 +15,108 @@
  */
 package com.android.systemui.tuner;
 
-import android.app.Activity;
 import android.app.Fragment;
+import android.app.FragmentTransaction;
 import android.os.Bundle;
-import android.view.MenuItem;
+import android.support.v14.preference.PreferenceFragment;
+import android.support.v7.preference.Preference;
+import android.support.v7.preference.PreferenceScreen;
+import android.util.Log;
 
-public class TunerActivity extends Activity {
+import com.android.settingslib.drawer.SettingsDrawerActivity;
+import com.android.systemui.R;
+
+public class TunerActivity extends SettingsDrawerActivity implements
+        PreferenceFragment.OnPreferenceStartFragmentCallback,
+        PreferenceFragment.OnPreferenceStartScreenCallback {
+
+    private static final String TAG_TUNER = "tuner";
+
+    private String mInitialTitle;
 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getFragmentManager().beginTransaction().replace(android.R.id.content, new TunerFragment())
-                .commit();
-    }
-
-    /**
-     * Base class for direct entry points into
-     * tuner fragments
-     */
-    private static abstract class FragmentTunerActivityBase extends Activity {
-        @Override
-        protected void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-            getActionBar().setDisplayHomeAsUpEnabled(true);
-            getFragmentManager().beginTransaction().replace(android.R.id.content,
-                    getFragment()).commit();
-        }
-
-        protected abstract Fragment getFragment();
-
-        @Override
-        public final boolean onOptionsItemSelected(MenuItem item) {
-            switch (item.getItemId()) {
-                case android.R.id.home:
-                    finish();
-                    return true;
+        if (getFragmentManager().findFragmentByTag(TAG_TUNER) == null) {
+            final String action = getIntent().getAction();
+            final Fragment fragment;
+            if ("com.android.settings.action.DEMO_MODE".equals(action)) {
+                fragment = new DemoModeFragment();
+            } else if (getIntent().getBooleanExtra(
+                    NightModeFragment.EXTRA_SHOW_NIGHT_MODE, false)) {
+                fragment = new NightModeFragment();
+            } else if ("com.android.settings.action.NAV_BAR_TUNER".equals(action)) {
+                fragment = new NavBarTuner();
+            } else {
+                fragment = new TunerFragment();
             }
-            return super.onOptionsItemSelected(item);
+
+            getFragmentManager().beginTransaction().replace(R.id.content_frame,
+                    fragment, TAG_TUNER).commit();
+
+            mInitialTitle = String.valueOf(getActionBar().getTitle());
+
+            String extra = getIntent().getStringExtra(TAG_TUNER);
+            if (extra != null) {
+                startPreferenceScreen((PreferenceFragment)fragment, extra, false);
+            }
         }
     }
 
-    public static final class DemoModeActivity extends FragmentTunerActivityBase {
-        @Override
-        protected Fragment getFragment() {
-            return new DemoModeFragment();
+    @Override
+    public void onBackPressed() {
+        if (!getFragmentManager().popBackStackImmediate()) {
+            super.onBackPressed();
+        } else {
+            getActionBar().setTitle(mInitialTitle);
         }
     }
 
-    public static final class StatusBarIconActivity extends FragmentTunerActivityBase {
+    @Override
+    public boolean onPreferenceStartFragment(PreferenceFragment caller, Preference pref) {
+        try {
+            Class<?> cls = Class.forName(pref.getFragment());
+            Fragment fragment = (Fragment) cls.newInstance();
+            FragmentTransaction transaction = getFragmentManager().beginTransaction();
+            getActionBar().setTitle(pref.getTitle());
+            transaction.replace(R.id.content_frame, fragment);
+            transaction.addToBackStack("PreferenceFragment");
+            transaction.commit();
+            return true;
+        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+            Log.d("TunerActivity", "Problem launching fragment", e);
+            return false;
+        }
+    }
+
+    private boolean startPreferenceScreen(PreferenceFragment caller, String key, boolean backStack) {
+        FragmentTransaction transaction = getFragmentManager().beginTransaction();
+        SubSettingsFragment fragment = new SubSettingsFragment();
+        final Bundle b = new Bundle(1);
+        b.putString(PreferenceFragment.ARG_PREFERENCE_ROOT, key);
+        fragment.setArguments(b);
+        fragment.setTargetFragment(caller, 0);
+        transaction.replace(R.id.content_frame, fragment);
+        if (backStack) {
+            transaction.addToBackStack("PreferenceFragment");
+        }
+        transaction.commit();
+
+        return true;
+    }
+
+    @Override
+    public boolean onPreferenceStartScreen(PreferenceFragment caller, PreferenceScreen pref) {
+        return startPreferenceScreen(caller, pref.getKey(), true);
+    }
+
+    public static class SubSettingsFragment extends PreferenceFragment {
         @Override
-        protected Fragment getFragment() {
-            return new StatusBarIconBlacklistFragment();
+        public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
+            PreferenceScreen p = (PreferenceScreen) ((PreferenceFragment) getTargetFragment())
+                    .getPreferenceScreen().findPreference(rootKey);
+            setPreferenceScreen(p);
+            getActivity().getActionBar().setTitle(p.getTitle());
         }
     }
 }

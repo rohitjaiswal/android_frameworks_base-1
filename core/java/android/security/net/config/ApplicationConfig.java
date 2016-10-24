@@ -17,6 +17,7 @@
 package android.security.net.config;
 
 import android.util.Pair;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 import javax.net.ssl.X509TrustManager;
@@ -120,6 +121,46 @@ public final class ApplicationConfig {
         return mTrustManager;
     }
 
+    /**
+     * Returns {@code true} if cleartext traffic is permitted for this application, which is the
+     * case only if all configurations permit cleartext traffic. For finer-grained policy use
+     * {@link #isCleartextTrafficPermitted(String)}.
+     */
+    public boolean isCleartextTrafficPermitted() {
+        ensureInitialized();
+        if (mConfigs != null) {
+            for (Pair<Domain, NetworkSecurityConfig> entry : mConfigs) {
+                if (!entry.second.isCleartextTrafficPermitted()) {
+                    return false;
+                }
+            }
+        }
+
+        return mDefaultConfig.isCleartextTrafficPermitted();
+    }
+
+    /**
+     * Returns {@code true} if cleartext traffic is permitted for this application when connecting
+     * to {@code hostname}.
+     */
+    public boolean isCleartextTrafficPermitted(String hostname) {
+        return getConfigForHostname(hostname).isCleartextTrafficPermitted();
+    }
+
+    public void handleTrustStorageUpdate() {
+        ensureInitialized();
+        mDefaultConfig.handleTrustStorageUpdate();
+        if (mConfigs != null) {
+            Set<NetworkSecurityConfig> updatedConfigs =
+                    new HashSet<NetworkSecurityConfig>(mConfigs.size());
+            for (Pair<Domain, NetworkSecurityConfig> entry : mConfigs) {
+                if (updatedConfigs.add(entry.second)) {
+                    entry.second.handleTrustStorageUpdate();
+                }
+            }
+        }
+    }
+
     private void ensureInitialized() {
         synchronized(mLock) {
             if (mInitialized) {
@@ -143,19 +184,5 @@ public final class ApplicationConfig {
         synchronized (sLock) {
             return sInstance;
         }
-    }
-
-    /** @hide */
-    public static ApplicationConfig getPlatformDefault() {
-        return new ApplicationConfig(new ConfigSource() {
-            @Override
-            public NetworkSecurityConfig getDefaultConfig() {
-                return NetworkSecurityConfig.DEFAULT;
-            }
-            @Override
-            public Set<Pair<Domain, NetworkSecurityConfig>> getPerDomainConfigs() {
-                return null;
-            }
-        });
     }
 }

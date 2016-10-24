@@ -334,18 +334,29 @@ final class RemoteConnectionService {
         }
 
         @Override
-        public void setExtras(String callId, Bundle extras) {
-            if (mConnectionById.containsKey(callId)) {
-                findConnectionForAction(callId, "setExtras")
-                        .setExtras(extras);
+        public void putExtras(String callId, Bundle extras) {
+            if (hasConnection(callId)) {
+                findConnectionForAction(callId, "putExtras").putExtras(extras);
             } else {
-                findConferenceForAction(callId, "setExtras")
-                        .setExtras(extras);
+                findConferenceForAction(callId, "putExtras").putExtras(extras);
             }
         }
 
         @Override
-        public void resetCdmaConnectionTime(String callId) {
+        public void removeExtras(String callId, List<String> keys) {
+            if (hasConnection(callId)) {
+                findConnectionForAction(callId, "removeExtra").removeExtras(keys);
+            } else {
+                findConferenceForAction(callId, "removeExtra").removeExtras(keys);
+            }
+        }
+
+        @Override
+        public void onConnectionEvent(String callId, String event, Bundle extras) {
+            if (mConnectionById.containsKey(callId)) {
+                findConnectionForAction(callId, "onConnectionEvent").onConnectionEvent(event,
+                        extras);
+            }
         }
     };
 

@@ -178,6 +178,9 @@ public final class DisplayInfo implements Parcelable {
     /** The list of supported color transforms */
     public Display.ColorTransform[] supportedColorTransforms = Display.ColorTransform.EMPTY_ARRAY;
 
+    /** The display's HDR capabilities */
+    public Display.HdrCapabilities hdrCapabilities;
+
     /**
      * The logical display density which is the basis for density-independent
      * pixels.
@@ -290,6 +293,7 @@ public final class DisplayInfo implements Parcelable {
                 && defaultModeId == other.defaultModeId
                 && colorTransformId == other.colorTransformId
                 && defaultColorTransformId == other.defaultColorTransformId
+                && Objects.equal(hdrCapabilities, other.hdrCapabilities)
                 && logicalDensityDpi == other.logicalDensityDpi
                 && physicalXDpi == other.physicalXDpi
                 && physicalYDpi == other.physicalYDpi
@@ -332,6 +336,7 @@ public final class DisplayInfo implements Parcelable {
         defaultColorTransformId = other.defaultColorTransformId;
         supportedColorTransforms = Arrays.copyOf(
                 other.supportedColorTransforms, other.supportedColorTransforms.length);
+        hdrCapabilities = other.hdrCapabilities;
         logicalDensityDpi = other.logicalDensityDpi;
         physicalXDpi = other.physicalXDpi;
         physicalYDpi = other.physicalYDpi;
@@ -375,6 +380,7 @@ public final class DisplayInfo implements Parcelable {
         for (int i = 0; i < nColorTransforms; i++) {
             supportedColorTransforms[i] = Display.ColorTransform.CREATOR.createFromParcel(source);
         }
+        hdrCapabilities = source.readParcelable(null);
         logicalDensityDpi = source.readInt();
         physicalXDpi = source.readFloat();
         physicalYDpi = source.readFloat();
@@ -418,6 +424,7 @@ public final class DisplayInfo implements Parcelable {
         for (int i = 0; i < supportedColorTransforms.length; i++) {
             supportedColorTransforms[i].writeToParcel(dest, flags);
         }
+        dest.writeParcelable(hdrCapabilities, flags);
         dest.writeInt(logicalDensityDpi);
         dest.writeFloat(physicalXDpi);
         dest.writeFloat(physicalYDpi);
@@ -564,11 +571,6 @@ public final class DisplayInfo implements Parcelable {
 
         if (!compatInfo.equals(CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO)) {
             compatInfo.applyToDisplayMetrics(outMetrics);
-        } else if (type == Display.TYPE_BUILT_IN
-                && (flags & Display.FLAG_PRESENTATION) == 0) {
-            outMetrics.setDensity(DisplayMetrics.DENSITY_PREFERRED);
-        } else {
-            outMetrics.setDensity(logicalDensityDpi);
         }
     }
 
@@ -619,6 +621,8 @@ public final class DisplayInfo implements Parcelable {
         sb.append(defaultColorTransformId);
         sb.append(", supportedColorTransforms ");
         sb.append(Arrays.toString(supportedColorTransforms));
+        sb.append(", hdrCapabilities ");
+        sb.append(hdrCapabilities);
         sb.append(", rotation ");
         sb.append(rotation);
         sb.append(", density ");

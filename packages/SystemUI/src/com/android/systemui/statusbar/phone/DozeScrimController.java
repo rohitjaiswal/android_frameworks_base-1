@@ -20,16 +20,12 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.annotation.NonNull;
-import android.content.ContentResolver;
 import android.content.Context;
-import android.database.ContentObserver;
 import android.os.Handler;
-import android.os.UserHandle;
-import android.provider.Settings;
 import android.util.Log;
-import android.view.animation.AnimationUtils;
 import android.view.animation.Interpolator;
 
+import com.android.systemui.Interpolators;
 import com.android.systemui.doze.DozeHost;
 import com.android.systemui.doze.DozeLog;
 
@@ -41,13 +37,8 @@ public class DozeScrimController {
     private static final boolean DEBUG = Log.isLoggable(TAG, Log.DEBUG);
 
     private final DozeParameters mDozeParameters;
-    private final Interpolator mPulseInInterpolator = PhoneStatusBar.ALPHA_OUT;
-    private final Interpolator mPulseInInterpolatorPickup;
-    private final Interpolator mPulseOutInterpolator = PhoneStatusBar.ALPHA_IN;
-    private final Interpolator mDozeAnimationInterpolator;
     private final Handler mHandler = new Handler();
     private final ScrimController mScrimController;
-    private Context mContext;
 
     private boolean mDozing;
     private DozeHost.PulseCallback mPulseCallback;
@@ -56,18 +47,10 @@ public class DozeScrimController {
     private Animator mBehindAnimator;
     private float mInFrontTarget;
     private float mBehindTarget;
-    private int mCustomTimeoutDelay = 3000;
 
     public DozeScrimController(ScrimController scrimController, Context context) {
         mScrimController = scrimController;
-        mContext = context;
         mDozeParameters = new DozeParameters(context);
-        mDozeAnimationInterpolator = mPulseInInterpolatorPickup =
-                AnimationUtils.loadInterpolator(context, android.R.interpolator.linear_out_slow_in);
-
-        // Settings observer
-        SettingsObserver observer = new SettingsObserver(mHandler);
-        observer.observe();
     }
 
     public void setDozing(boolean dozing, boolean animate) {
@@ -81,9 +64,11 @@ public class DozeScrimController {
             cancelPulsing();
             if (animate) {
                 startScrimAnimation(false /* inFront */, 0f /* target */,
-                        NotificationPanelView.DOZE_ANIMATION_DURATION, mDozeAnimationInterpolator);
+                        NotificationPanelView.DOZE_ANIMATION_DURATION,
+                        Interpolators.LINEAR_OUT_SLOW_IN);
                 startScrimAnimation(true /* inFront */, 0f /* target */,
-                        NotificationPanelView.DOZE_ANIMATION_DURATION, mDozeAnimationInterpolator);
+                        NotificationPanelView.DOZE_ANIMATION_DURATION,
+                        Interpolators.LINEAR_OUT_SLOW_IN);
             } else {
                 abortAnimations();
                 mScrimController.setDozeBehindAlpha(0f);
@@ -126,8 +111,8 @@ public class DozeScrimController {
         if (isPulsing()) {
             final boolean pickup = mPulseReason == DozeLog.PULSE_REASON_SENSOR_PICKUP;
             startScrimAnimation(true /* inFront */, 0f,
-                    mDozeParameters.getPulseInDuration(mPulseReason),
-                    pickup ? mPulseInInterpolatorPickup : mPulseInInterpolator,
+                    mDozeParameters.getPulseInDuration(pickup),
+                    pickup ? Interpolators.LINEAR_OUT_SLOW_IN : Interpolators.ALPHA_OUT,
                     mPulseInFinished);
         }
     }
@@ -267,7 +252,7 @@ public class DozeScrimController {
         public void run() {
             if (DEBUG) Log.d(TAG, "Pulse in finished, mDozing=" + mDozing);
             if (!mDozing) return;
-            mHandler.postDelayed(mPulseOut, mCustomTimeoutDelay);
+            mHandler.postDelayed(mPulseOut, mDozeParameters.getPulseVisibleDuration());
         }
     };
 
@@ -277,7 +262,7 @@ public class DozeScrimController {
             if (DEBUG) Log.d(TAG, "Pulse out, mDozing=" + mDozing);
             if (!mDozing) return;
             startScrimAnimation(true /* inFront */, 1f, mDozeParameters.getPulseOutDuration(),
-                    mPulseOutInterpolator, mPulseOutFinished);
+                    Interpolators.ALPHA_IN, mPulseOutFinished);
         }
     };
 
@@ -291,36 +276,4 @@ public class DozeScrimController {
             pulseFinished();
         }
     };
-
-    /**
-     * Settingsobserver to take care of the user settings.
-     */
-    private class SettingsObserver extends ContentObserver {
-        SettingsObserver(Handler handler) {
-            super(handler);
-        }
-
-        void observe() {
-            ContentResolver resolver = mContext.getContentResolver();
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.DOZE_TIMEOUT),
-                    false, this, UserHandle.USER_ALL);
-            update();
-        }
-
-        @Override
-        public void onChange(boolean selfChange) {
-            super.onChange(selfChange);
-            update();
-        }
-
-        public void update() {
-            ContentResolver resolver = mContext.getContentResolver();
-
-            // Get custom timeout
-            mCustomTimeoutDelay = Settings.System.getIntForUser(resolver,
-                    Settings.System.DOZE_TIMEOUT, 3000,
-                    UserHandle.USER_CURRENT);
-        }
-    }
 }

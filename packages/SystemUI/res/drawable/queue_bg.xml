@@ -18,27 +18,27 @@
     <ripple android:color="?android:colorControlHighlight">
         <item android:state_pressed="true">
             <shape android:shape="rectangle">
-                <solid android:color="@color/queue_background_pressed"/>
+                <solid android:color="@color/notification_ripple_untinted_color"/>
             </shape>
         </item>
     </ripple>
     <ripple android:color="?android:colorControlHighlight">
         <item android:state_selected="true">
             <shape android:shape="rectangle">
-                <solid android:color="@color/queue_background_pressed"/>
+                <solid android:color="@color/notification_ripple_untinted_color"/>
             </shape>
         </item>
     </ripple>
     <ripple android:color="?android:colorControlHighlight">
         <item android:state_focused="true">
             <shape android:shape="rectangle">
-                <solid android:color="@color/queue_background_pressed"/>
+                <solid android:color="@color/notification_ripple_untinted_color"/>
             </shape>
         </item>
     </ripple>
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="@color/queue_background"/>
+            <solid android:color="@color/notification_guts_bg_color"/>
         </shape>
     </item>
 </selector>

@@ -17,11 +17,12 @@
 package com.android.systemui.qs.tiles;
 
 import android.content.Context;
+import android.content.Intent;
 import android.os.Handler;
 import android.os.PowerManager;
 import com.android.systemui.R;
 import com.android.systemui.qs.QSTile;
-import com.android.internal.logging.MetricsLogger;
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 
 public class RebootTile extends QSTile<QSTile.BooleanState> {
 
@@ -32,17 +33,12 @@ public class RebootTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
-    public int getMetricsCategory() {
-        return MetricsLogger.DISPLAY;
-    }
-
-    @Override
-    protected BooleanState newTileState() {
+    public BooleanState newTileState() {
         return new BooleanState();
     }
 
     @Override
-    protected void handleClick() {
+    public void handleClick() {
         mRebootToRecovery = !mRebootToRecovery;
         refreshState();
     }
@@ -61,8 +57,22 @@ public class RebootTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
+    public Intent getLongClickIntent() {
+        return null;
+    }
+
+    @Override
+    public CharSequence getTileLabel() {
+        return mContext.getString(R.string.quick_settings_reboot_label);
+    }
+
+    @Override
+    public int getMetricsCategory() {
+        return MetricsEvent.QUICK_SETTINGS;
+    }
+
+    @Override
     protected void handleUpdateState(BooleanState state, Object arg) {
-        state.visible = true;
         if (mRebootToRecovery) {
             state.label = mContext.getString(R.string.quick_settings_reboot_recovery_label);
             state.icon = ResourceIcon.get(R.drawable.ic_qs_reboot_recovery);
@@ -75,5 +85,4 @@ public class RebootTile extends QSTile<QSTile.BooleanState> {
     @Override
     public void setListening(boolean listening) {
     }
-
 }

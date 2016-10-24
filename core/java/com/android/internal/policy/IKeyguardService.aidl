@@ -15,8 +15,6 @@
  */
 package com.android.internal.policy;
 
-import android.graphics.Bitmap;
-
 import com.android.internal.policy.IKeyguardDrawnCallback;
 import com.android.internal.policy.IKeyguardStateCallback;
 import com.android.internal.policy.IKeyguardExitCallback;
@@ -52,9 +50,12 @@ oneway interface IKeyguardService {
      * Called when the device has finished going to sleep.
      *
      * @param why {@link #OFF_BECAUSE_OF_USER}, {@link #OFF_BECAUSE_OF_ADMIN},
-     * or {@link #OFF_BECAUSE_OF_TIMEOUT}.
+     *            or {@link #OFF_BECAUSE_OF_TIMEOUT}.
+     * @param cameraGestureTriggered whether the camera gesture was triggered between
+     *                               {@link #onStartedGoingToSleep} and this method; if it's been
+     *                               triggered, we shouldn't lock the device.
      */
-    void onFinishedGoingToSleep(int reason);
+    void onFinishedGoingToSleep(int reason, boolean cameraGestureTriggered);
 
     /**
      * Called when the device has started waking up.
@@ -96,7 +97,4 @@ oneway interface IKeyguardService {
      * to start the keyguard dismiss sequence.
      */
     void onActivityDrawn();
-    void showKeyguard();
-
-    oneway void setBackgroundBitmap(in Bitmap bmp);
 }

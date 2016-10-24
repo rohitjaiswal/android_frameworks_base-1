@@ -200,18 +200,6 @@ namespace {
         }
         print("", "overlay crc", i, "");
 
-        err = buf.nextUint32(&i);
-		if (err != NO_ERROR) {
-			return err;
-		}
-		print("", "base mtime", i, "");
-
-        err = buf.nextUint32(&i);
-		if (err != NO_ERROR) {
-			return err;
-		}
-		print("", "overlay mtime", i, "");
-
         err = buf.nextPath(path);
         if (err != NO_ERROR) {
             // printe done from IdmapBuffer::nextPath
@@ -235,8 +223,7 @@ namespace {
     }
 
     status_t parse_data(IdmapBuffer& buf, const AssetManager& am) {
-        const ResTable& rt = am.getResources();
-        const uint32_t packageId = rt.getBasePackageId(rt.getBasePackageCount() - 1);
+        const uint32_t packageId = am.getResources().getBasePackageId(0);
 
         uint16_t data16;
         status_t err = buf.nextUint16(&data16);

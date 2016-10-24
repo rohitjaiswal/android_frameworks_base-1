@@ -19,6 +19,7 @@ package android.hardware;
 import android.app.ActivityThread;
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
+import android.app.job.JobInfo;
 import android.content.Context;
 import android.graphics.ImageFormat;
 import android.graphics.Point;
@@ -48,6 +49,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
+import static android.system.OsConstants.*;
+
 /**
  * The Camera class is used to set image capture settings, start/stop preview,
  * snap pictures, and retrieve frames for encoding for video.  This class is a
@@ -74,7 +77,7 @@ import java.util.List;
  * <li>If necessary, modify the returned {@link Camera.Parameters} object and call
  * {@link #setParameters(Camera.Parameters)}.
  *
- * <li>If desired, call {@link #setDisplayOrientation(int)}.
+ * <li>Call {@link #setDisplayOrientation(int)} to ensure correct orientation of preview.
  *
  * <li><b>Important</b>: Pass a fully initialized {@link SurfaceHolder} to
  * {@link #setPreviewDisplay(SurfaceHolder)}.  Without a surface, the camera
@@ -191,19 +194,27 @@ public class Camera {
     /* ### QC ADD-ONS: END */
 
     /**
+     * @deprecated This broadcast is no longer delivered by the system; use
+     * {@link android.app.job.JobInfo.Builder JobInfo.Builder}.{@link android.app.job.JobInfo.Builder#addTriggerContentUri}
+     * instead.
      * Broadcast Action:  A new picture is taken by the camera, and the entry of
      * the picture has been added to the media store.
      * {@link android.content.Intent#getData} is URI of the picture.
      */
     @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    @Deprecated
     public static final String ACTION_NEW_PICTURE = "android.hardware.action.NEW_PICTURE";
 
     /**
+     * @deprecated This broadcast is no longer delivered by the system; use
+     * {@link android.app.job.JobInfo.Builder JobInfo.Builder}.{@link android.app.job.JobInfo.Builder#addTriggerContentUri}
+     * instead.
      * Broadcast Action:  A new video is recorded by the camera, and the entry
      * of the video has been added to the media store.
      * {@link android.content.Intent#getData} is URI of the video.
      */
     @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    @Deprecated
     public static final String ACTION_NEW_VIDEO = "android.hardware.action.NEW_VIDEO";
 
     /**
@@ -435,30 +446,28 @@ public class Camera {
     private Camera(int cameraId, int halVersion) {
         int err = cameraInitVersion(cameraId, halVersion);
         if (checkInitErrors(err)) {
-            switch(err) {
-                case EACCESS:
-                    throw new RuntimeException("Fail to connect to camera service");
-                case ENODEV:
-                    throw new RuntimeException("Camera initialization failed");
-                case ENOSYS:
-                    throw new RuntimeException("Camera initialization failed because some methods"
-                            + " are not implemented");
-                case EOPNOTSUPP:
-                    throw new RuntimeException("Camera initialization failed because the hal"
-                            + " version is not supported by this device");
-                case EINVAL:
-                    throw new RuntimeException("Camera initialization failed because the input"
-                            + " arugments are invalid");
-                case EBUSY:
-                    throw new RuntimeException("Camera initialization failed because the camera"
-                            + " device was already opened");
-                case EUSERS:
-                    throw new RuntimeException("Camera initialization failed because the max"
-                            + " number of camera devices were already opened");
-                default:
-                    // Should never hit this.
-                    throw new RuntimeException("Unknown camera error");
+            if (err == -EACCES) {
+                throw new RuntimeException("Fail to connect to camera service");
+            } else if (err == -ENODEV) {
+                throw new RuntimeException("Camera initialization failed");
+            } else if (err == -ENOSYS) {
+                throw new RuntimeException("Camera initialization failed because some methods"
+                        + " are not implemented");
+            } else if (err == -EOPNOTSUPP) {
+                throw new RuntimeException("Camera initialization failed because the hal"
+                        + " version is not supported by this device");
+            } else if (err == -EINVAL) {
+                throw new RuntimeException("Camera initialization failed because the input"
+                        + " arugments are invalid");
+            } else if (err == -EBUSY) {
+                throw new RuntimeException("Camera initialization failed because the camera"
+                        + " device was already opened");
+            } else if (err == -EUSERS) {
+                throw new RuntimeException("Camera initialization failed because the max"
+                        + " number of camera devices were already opened");
             }
+            // Should never hit this.
+            throw new RuntimeException("Unknown camera error");
         }
     }
 
@@ -527,15 +536,13 @@ public class Camera {
     Camera(int cameraId) {
         int err = cameraInitNormal(cameraId);
         if (checkInitErrors(err)) {
-            switch(err) {
-                case EACCESS:
-                    throw new RuntimeException("Fail to connect to camera service");
-                case ENODEV:
-                    throw new RuntimeException("Camera initialization failed");
-                default:
-                    // Should never hit this.
-                    throw new RuntimeException("Unknown camera error");
+            if (err == -EACCES) {
+                throw new RuntimeException("Fail to connect to camera service");
+            } else if (err == -ENODEV) {
+                throw new RuntimeException("Camera initialization failed");
             }
+            // Should never hit this.
+            throw new RuntimeException("Unknown camera error");
         }
     }
 
@@ -1569,9 +1576,15 @@ public class Camera {
      * <p>Starting from API level 14, this method can be called when preview is
      * active.
      *
+     * <p><b>Note: </b>Before API level 24, the default value for orientation is 0. Starting in
+     * API level 24, the default orientation will be such that applications in forced-landscape mode
+     * will have correct preview orientation, which may be either a default of 0 or
+     * 180. Applications that operate in portrait mode or allow for changing orientation must still
+     * call this method after each orientation change to ensure correct preview display in all
+     * cases.</p>
+     *
      * @param degrees the angle that the picture will be rotated clockwise.
-     *                Valid values are 0, 90, 180, and 270. The starting
-     *                position is 0 (landscape).
+     *                Valid values are 0, 90, 180, and 270.
      * @see #setPreviewDisplay(SurfaceHolder)
      */
     public native final void setDisplayOrientation(int degrees);
@@ -3194,8 +3207,7 @@ public class Camera {
          * <var>y</var> for the Y plane and row <var>c</var> for the U and V
          * planes:
          *
-         * {@code
-         * <pre>
+         * <pre>{@code
          * yStride   = (int) ceil(width / 16.0) * 16;
          * uvStride  = (int) ceil( (yStride / 2) / 16.0) * 16;
          * ySize     = yStride * height;
@@ -3203,8 +3215,9 @@ public class Camera {
          * yRowIndex = yStride * y;
          * uRowIndex = ySize + uvSize + uvStride * c;
          * vRowIndex = ySize + uvStride * c;
-         * size      = ySize + uvSize * 2;</pre>
+         * size      = ySize + uvSize * 2;
          * }
+         *</pre>
          *
          * @param pixel_format the desired preview picture format, defined by
          *   one of the {@link android.graphics.ImageFormat} constants.  (E.g.,
@@ -3782,7 +3795,12 @@ public class Camera {
          *         valid value.
          */
         public float getHorizontalViewAngle() {
-            return Float.parseFloat(get(KEY_HORIZONTAL_VIEW_ANGLE));
+            try {
+                return Float.parseFloat(get(KEY_HORIZONTAL_VIEW_ANGLE));
+            } catch (NumberFormatException e) {
+                Log.e(TAG, e.getMessage(), e);
+            }
+            return 0;
         }
 
         /**
@@ -3792,7 +3810,12 @@ public class Camera {
          *         valid value.
          */
         public float getVerticalViewAngle() {
-            return Float.parseFloat(get(KEY_VERTICAL_VIEW_ANGLE));
+            try {
+                return Float.parseFloat(get(KEY_VERTICAL_VIEW_ANGLE));
+            } catch (NumberFormatException e) {
+                Log.e(TAG, e.getMessage(), e);
+            }
+            return 0;
         }
 
         /**

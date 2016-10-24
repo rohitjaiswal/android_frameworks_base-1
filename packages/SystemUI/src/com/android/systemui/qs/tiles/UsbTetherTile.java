@@ -17,6 +17,7 @@
 package com.android.systemui.qs.tiles;
 
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -24,15 +25,14 @@ import android.hardware.usb.UsbManager;
 import android.provider.Settings;
 import android.net.ConnectivityManager;
 
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.systemui.R;
 import com.android.systemui.qs.QSTile;
-import org.cyanogenmod.internal.logging.CMMetricsLogger;
 
 /**
  * USB Tether quick settings tile
  */
 public class UsbTetherTile extends QSTile<QSTile.BooleanState> {
-    private static final Intent WIRELESS_SETTINGS = new Intent(Settings.ACTION_WIRELESS_SETTINGS);
 
     private final ConnectivityManager mConnectivityManager;
 
@@ -47,7 +47,8 @@ public class UsbTetherTile extends QSTile<QSTile.BooleanState> {
                 .getSystemService(Context.CONNECTIVITY_SERVICE);
     }
 
-    protected BooleanState newTileState() {
+    @Override
+    public BooleanState newTileState() {
         return new BooleanState();
     }
 
@@ -71,8 +72,19 @@ public class UsbTetherTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
-    protected void handleLongClick() {
-        mHost.startActivityDismissingKeyguard(WIRELESS_SETTINGS);
+    public Intent getLongClickIntent() {
+        return new Intent().setComponent(new ComponentName(
+            "com.android.settings", "com.android.settings.Settings$WirelessSettingsActivity"));
+    }
+
+    @Override
+    public CharSequence getTileLabel() {
+        return mContext.getString(R.string.quick_settings_usb_tether_label);
+    }
+
+    @Override
+    public int getMetricsCategory() {
+        return MetricsEvent.QUICK_SETTINGS;
     }
 
     private void updateState() {
@@ -105,15 +117,27 @@ public class UsbTetherTile extends QSTile<QSTile.BooleanState> {
 
     @Override
     protected void handleUpdateState(BooleanState state, Object arg) {
-        state.visible = mUsbConnected && mConnectivityManager.isTetheringSupported();
         state.value = mUsbTethered;
         state.label = mContext.getString(R.string.quick_settings_usb_tether_label);
-        state.icon = mUsbTethered ? ResourceIcon.get(R.drawable.ic_qs_usb_tether_on)
-                : ResourceIcon.get(R.drawable.ic_qs_usb_tether_off);
+        if (mUsbTethered) {
+            state.icon = ResourceIcon.get(R.drawable.ic_qs_usb_tether_on);
+            state.contentDescription = mContext.getString(
+                    R.string.accessibility_quick_settings_usb_tether_on);
+        } else {
+            state.icon = ResourceIcon.get(R.drawable.ic_qs_usb_tether_off);
+            state.contentDescription = mContext.getString(
+                    R.string.accessibility_quick_settings_usb_tether_off);
+        }
     }
 
     @Override
-    public int getMetricsCategory() {
-        return CMMetricsLogger.TILE_USB_TETHER;
+    protected String composeChangeAnnouncement() {
+        if (mState.value) {
+            return mContext.getString(
+                    R.string.accessibility_quick_settings_usb_tether_changed_on);
+        } else {
+            return mContext.getString(
+                    R.string.accessibility_quick_settings_usb_tether_changed_off);
+        }
     }
 }

@@ -4,7 +4,6 @@ import android.app.ActivityManager;
 import android.app.ActivityManagerNative;
 import android.app.ActivityOptions;
 import android.app.IActivityManager;
-import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -27,7 +26,7 @@ public class ActionUtils {
 
     /**
      * Kills the top most / most recent user application, but leaves out the launcher.
-     * This is function governed by {@link CMSettings.Secure.KILL_APP_LONGPRESS_BACK}.
+     * This is function governed by {@link Settings.Secure.KILL_APP_LONGPRESS_BACK}.
      *
      * @param context the current context, used to retrieve the package manager.
      * @param userId the ID of the currently active user
@@ -102,29 +101,18 @@ public class ActionUtils {
             throws RemoteException {
         ActivityManager.RecentTaskInfo lastTask = getLastTask(context, userId);
 
-        if (lastTask == null) {
+        if (lastTask == null || lastTask.id < 0) {
             return false;
         }
 
-        final Intent lastAppIntent = lastTask.baseIntent;
-        final String packageName = lastAppIntent.getComponent().getPackageName();
+        final String packageName = lastTask.baseIntent.getComponent().getPackageName();
         final IActivityManager am = ActivityManagerNative.getDefault();
         final ActivityOptions opts = ActivityOptions.makeCustomAnimation(context,
                 com.android.internal.R.anim.last_app_in,
                 com.android.internal.R.anim.last_app_out);
 
         if (DEBUG) Log.d(TAG, "switching to " + packageName);
-        if (lastTask.id > 0) {
-            am.moveTaskToFront(lastTask.id, ActivityManager.MOVE_TASK_NO_USER_ACTION, opts.toBundle());
-        } else if (lastAppIntent != null) {
-            // last task is dead, restart it.
-            lastAppIntent.addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY);
-            try {
-                context.startActivityAsUser(lastAppIntent, opts.toBundle(), UserHandle.CURRENT);
-            } catch (ActivityNotFoundException e) {
-                Log.w("Recent", "Unable to launch recent task", e);
-            }
-        }
+        am.moveTaskToFront(lastTask.id, ActivityManager.MOVE_TASK_NO_USER_ACTION, opts.toBundle());
 
         return true;
     }
@@ -132,8 +120,8 @@ public class ActionUtils {
     private static ActivityManager.RecentTaskInfo getLastTask(Context context, int userId)
             throws RemoteException {
         final String defaultHomePackage = resolveCurrentLauncherPackage(context, userId);
-        final IActivityManager am = ActivityManagerNative.getDefault();
-        final List<ActivityManager.RecentTaskInfo> tasks = am.getRecentTasks(5,
+        final ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        final List<ActivityManager.RecentTaskInfo> tasks = am.getRecentTasksForUser(5,
                 ActivityManager.RECENT_IGNORE_UNAVAILABLE, userId);
 
         for (int i = 1; i < tasks.size(); i++) {

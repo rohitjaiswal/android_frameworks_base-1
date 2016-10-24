@@ -42,7 +42,6 @@
     <fraction name="def_window_animation_scale">100%</fraction>
     <fraction name="def_window_transition_scale">100%</fraction>
     <bool name="def_haptic_feedback">true</bool>
-    <bool name="def_dozeEnabledByDefault">false</bool>
 
     <bool name="def_bluetooth_on">false</bool>
     <bool name="def_wifi_display_on">false</bool>
@@ -57,6 +56,8 @@
     <bool name="def_netstats_enabled">true</bool>
     <bool name="def_usb_mass_storage_enabled">true</bool>
     <bool name="def_wifi_on">false</bool>
+    <bool name="def_show_password_on">true</bool>
+    <bool name="config_show_password_on">false</bool>
     <!-- 0 == never, 1 == only when plugged in, 2 == always -->
     <integer name="def_wifi_sleep_policy">2</integer>
     <bool name="def_networks_available_notification_on">true</bool>
@@ -86,7 +87,6 @@
     <string name="def_unlock_sound" translatable="false">/system/media/audio/ui/Unlock.ogg</string>
     <string name="def_trusted_sound" translatable="false">/system/media/audio/ui/Trusted.ogg</string>
     <string name="def_wireless_charging_started_sound" translatable="false">/system/media/audio/ui/WirelessChargingStarted.ogg</string>
-    <bool name="def_volume_adjust_sounds_enabled">true</bool>
 
     <bool name="def_lockscreen_disabled">false</bool>
     <bool name="def_device_provisioned">false</bool>
@@ -162,7 +162,10 @@
     <integer name="def_download_manager_recommended_max_bytes_over_mobile">-1</integer>
 
     <!-- Default for Settings.Secure.LONG_PRESS_TIMEOUT_MILLIS -->
-    <integer name="def_long_press_timeout_millis">400</integer>
+    <integer name="def_long_press_timeout_millis">500</integer>
+
+    <!-- Default for Settings.Secure.SHOW_IME_WITH_HARD_KEYBOARD -->
+    <bool name="def_show_ime_with_hard_keyboard">false</bool>
 
     <!-- Default for Settings.System.POINTER_SPEED -->
     <integer name="def_pointer_speed">0</integer>
@@ -187,9 +190,6 @@
          >0 is milliseconds of screen-off time after which battery sounds will not play -->
     <integer name="def_low_battery_sound_timeout">0</integer>
 
-    <!-- Default for Settings.System.VIBRATE_WHEN_RINGING enabled -->
-    <bool name="def_vibrate_when_ringing_enabled">false</bool>
-
     <!-- Initial value for the Settings.Secure.IMMERSIVE_MODE_CONFIRMATIONS setting,
          which is a comma separated list of packages that no longer need confirmation
          for immersive mode.
@@ -205,9 +205,6 @@
     <!-- Default for Settings.Secure.LOCK_SCREEN_ALLOW_PRIVATE_NOTIFICATIONS -->
     <bool name="def_lock_screen_allow_private_notifications">true</bool>
 
-    <!-- Default for Settings.Global.SEND_ACTION_APP_ERROR -->
-    <integer name="def_send_action_app_error">0</integer>
-
     <!-- Default for Settings.Global.HEADS_UP_NOTIFICATIONS_ENABLED, 1==on -->
     <integer name="def_heads_up_enabled">1</integer>
 
@@ -220,20 +217,95 @@
     <!-- Default for Settings.Secure.WAKE_GESTURE_ENABLED -->
     <bool name="def_wake_gesture_enabled">true</bool>
 
-    <!-- Default for Settings.Global.GUEST_USER_ENABLED -->
-    <bool name="def_guest_user_enabled">true</bool>
-
     <!-- Default state of tap to wake -->
     <bool name="def_double_tap_to_wake">true</bool>
 
     <!-- Default for Settings.Secure.NFC_PAYMENT_COMPONENT -->
     <string name="def_nfc_payment_component"></string>
 
+    <!-- Default setting for ability to add users from the lock screen -->
+    <bool name="def_add_users_from_lockscreen">false</bool>
+
+    <!-- custom system sound or not -->
+    <bool name="def_custom_sys_volume">false</bool>
+
+    <!-- Ringtone Volume,its value is from 0 to 7,default value is 5 -->
+    <integer name="def_ringtone_volume" translatable="false">5</integer>
+
+    <!-- Music Volume,its value is from 0 to 15,default value is 11 -->
+    <integer name="def_music_volume" translatable="false">11</integer>
+
+    <!-- Voice Call Volume,its value is from 0 to 5,default value is 4 -->
+    <integer name="def_voice_call_volume" translatable="false">4</integer>
+
+    <!-- Alarm Volume,its value is from 0 to 7,default value is 6 -->
+    <integer name="def_alarm_volume" translatable="false">6</integer>
+
+    <!-- Notification Volume,its value is from 0 to 7,default value is 5 -->
+    <integer name="def_notification_volume" translatable="false">5</integer>
+
+    <!-- Ringtone headset Volume,its value is from 0 to 7,default value is 5 -->
+    <integer name="def_ringtone_headset_volume" translatable="false">5</integer>
+
+    <!-- Music headset Volume,its value is from 0 to 15,default value is 11 -->
+    <integer name="def_music_headset_volume" translatable="false">11</integer>
+
+    <!-- Voice Call headset Volume,its value is from 0 to 5,default value is 4 -->
+    <integer name="def_voice_call_headset_volume" translatable="false">4</integer>
+
+    <!-- Alarm headset Volume,its value is from 0 to 7,default value is 6 -->
+    <integer name="def_alarm_headset_volume" translatable="false">6</integer>
+
+    <!-- Notification headset Volume,its value is from 0 to 7,default value is 5 -->
+    <integer name="def_notification_headset_volume" translatable="false">5</integer>
+
+    <!-- Ringtone speaker Volume,its value is from 0 to 7,default value is 5 -->
+    <integer name="def_ringtone_speaker_volume" translatable="false">5</integer>
+
+    <!-- Music speaker Volume,its value is from 0 to 15,default value is 11 -->
+    <integer name="def_music_speaker_volume" translatable="false">11</integer>
+
+    <!-- Voice Call speaker Volume,its value is from 0 to 5,default value is 4 -->
+    <integer name="def_voice_call_speaker_volume" translatable="false">4</integer>
+
+    <!-- Alarm speaker Volume,its value is from 0 to 7,default value is 6 -->
+    <integer name="def_alarm_speaker_volume" translatable="false">6</integer>
+
+    <!-- Notification speaker Volume,its value is from 0 to 7,default value is 5 -->
+    <integer name="def_notification_speaker_volume" translatable="false">5</integer>
+
+    <!-- Voice Call earpiece Volume,its value is from 0 to 5,default value is 4 -->
+    <integer name="def_voice_call_earpiece_volume" translatable="false">4</integer>
+
+    <!-- Date format,yyyy-MM-dd: 2013/07/30; MM-dd-yyyy:07/30/2013; dd-MM-yyyy:30/07/2013 -->
+    <string name="def_date_format" translatable="false"></string>
+
+    <!-- Time format,default value is 24 : 24 format,other value is 12 format -->
+    <string name="def_time_format" translatable="false"></string>
+
+    <!-- enable accessibility or not,1:enable;0:disable -->
+    <integer name="def_enable_accessibility">0</integer>
+
+    <!-- for enable accessibility services,split by ":" ,
+         example "com.google.android.marvin.talkback/
+         com.google.android.marvin.talkback.TalkBackService" -->
+    <string name="def_enable_accessibility_services" translatable="false"></string>
+    <!-- Default Input Method, its value is from inputmethod's package name and main class name
+        such as "com.android.inputmethod.pinyin/.PinyinIME"
+    -->
+    <string name="def_input_method" translatable="false"></string>
+    <!--
+        Default Enable InputMethods, its value is from inputmethod's package name and main class
+        name such as "com.android.inputmethod.pinyin/.PinyinIME" ;This is a string
+        containing the IDs of all enabled input methods, each ID separated by ':'.
+    -->
+    <string name="def_enable_input_methods" translatable="false"></string>
+
     <!-- Default for Settings.System.STATUS_BAR_NOTIF_COUNT. -->
     <integer name="def_notif_count">0</integer>
 
-    <!-- Default protected sms originating address values of Settings.Secure.PROTECTED_SMS_ADDRESSES -->
-    <string-array name="def_protected_sms_list_values"></string-array>
+    <!-- Default setting for showing the 4G indicator -->
+    <integer name="def_show_4g_for_lte">1</integer>
 
     <!-- Default for Settings.Global.CAPTIVE_PORTAL_DETECTION_ENABLED -->
     <integer name="def_captive_portal_detection_enabled" translatable="false">1</integer>

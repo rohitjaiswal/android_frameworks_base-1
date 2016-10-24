@@ -28,12 +28,15 @@ import android.net.ConnectivityManager;
 import android.net.wifi.WifiManager;
 import android.telephony.ServiceState;
 import android.telephony.SubscriptionInfo;
+import android.telephony.SubscriptionManager;
+import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.text.method.SingleLineTransformationMethod;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
+import android.os.SystemProperties;
 
 import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.telephony.IccCardConstants.State;
@@ -46,7 +49,6 @@ public class CarrierText extends TextView {
     private static final String TAG = "CarrierText";
 
     private static CharSequence mSeparator;
-    private static CharSequence mSubSeparator;
 
     private final boolean mIsEmergencyCallCapable;
 
@@ -154,22 +156,84 @@ public class CarrierText extends TextView {
     protected void updateCarrierText() {
         boolean allSimsMissing = true;
         boolean anySimReadyAndInService = false;
+        boolean showLocale = getContext().getResources().getBoolean(
+                com.android.internal.R.bool.config_monitor_locale_change);
         CharSequence displayText = null;
 
         List<SubscriptionInfo> subs = mKeyguardUpdateMonitor.getSubscriptionInfo(false);
         final int N = subs.size();
         if (DEBUG) Log.d(TAG, "updateCarrierText(): " + N);
+        // If the Subscription Infos are not available and if any of the sims are not
+        // in SIM_STATE_ABSENT,set displayText as "NO SERVICE".
+        // displayText will be overrided after the Subscription infos are available and
+        // displayText is set according to the SIM Status.
+        if (N == 0) {
+                 boolean isSimAbsent = false;
+                 for (int i = 0; i < TelephonyManager.getDefault().getSimCount(); i++) {
+                      if (TelephonyManager.getDefault().getSimState(i)
+                            == TelephonyManager.SIM_STATE_ABSENT) {
+                            isSimAbsent = true;
+                            break;
+                      }
+            }
+            if (!isSimAbsent) {
+                allSimsMissing = false;
+                displayText = getContext().getString(R.string.keyguard_carrier_default);
+            }
+        }
         for (int i = 0; i < N; i++) {
+            CharSequence networkClass = "";
             int subId = subs.get(i).getSubscriptionId();
             State simState = mKeyguardUpdateMonitor.getSimState(subId);
+            boolean showRat = SubscriptionManager.getResourcesForSubId(mContext,
+                    subId).getBoolean(com.android.internal.R.bool.config_display_rat);
+            if (showRat) {
+                ServiceState ss = mKeyguardUpdateMonitor.mServiceStates.get(subId);
+                if (ss != null && (ss.getDataRegState() == ServiceState.STATE_IN_SERVICE
+                        || ss.getVoiceRegState() == ServiceState.STATE_IN_SERVICE)) {
+                    int networkType = TelephonyManager.NETWORK_TYPE_UNKNOWN;
+                    if (ss.getRilDataRadioTechnology() !=
+                            ServiceState.RIL_RADIO_TECHNOLOGY_UNKNOWN) {
+                        networkType = ss.getDataNetworkType();
+                    } else if (ss.getRilVoiceRadioTechnology() !=
+                                ServiceState.RIL_RADIO_TECHNOLOGY_UNKNOWN) {
+                        networkType = ss.getVoiceNetworkType();
+                    }
+                    networkClass = networkClassToString(TelephonyManager
+                            .getNetworkClass(networkType));
+                }
+            }
             CharSequence carrierName = subs.get(i).getCarrierName();
+            if (showLocale || showRat) {
+                String[] names = carrierName.toString().split(mSeparator.toString(), 2);
+                StringBuilder newCarrierName = new StringBuilder();
+                for (int j = 0; j < names.length; j++) {
+                    if (showLocale) {
+                        names[j] = android.util.NativeTextHelper.getLocalString(getContext(),
+                                names[j], com.android.internal.R.array.origin_carrier_names,
+                                com.android.internal.R.array.locale_carrier_names);
+                    }
+                    if (!TextUtils.isEmpty(names[j])) {
+                        if (!TextUtils.isEmpty(networkClass) && showRat) {
+                            names[j] = new StringBuilder().append(names[j]).append(" ")
+                                    .append(networkClass).toString();
+                        }
+                        if (j > 0 && names[j].equals(names[j-1])) {
+                            continue;
+                        }
+                        if (j > 0) newCarrierName.append(mSeparator);
+                        newCarrierName.append(names[j]);
+                    }
+                }
+                carrierName = newCarrierName.toString();
+            }
             CharSequence carrierTextForSimState = getCarrierTextForSimState(simState, carrierName);
             if (DEBUG) {
                 Log.d(TAG, "Handling (subId=" + subId + "): " + simState + " " + carrierName);
             }
             if (carrierTextForSimState != null) {
                 allSimsMissing = false;
-                displayText = concatenate(displayText, carrierTextForSimState, mSubSeparator);
+                displayText = concatenate(displayText, carrierTextForSimState);
             }
             if (simState == IccCardConstants.State.READY) {
                 ServiceState ss = mKeyguardUpdateMonitor.mServiceStates.get(subId);
@@ -259,8 +323,6 @@ public class CarrierText extends TextView {
         super.onFinishInflate();
         mSeparator = getResources().getString(
                 com.android.internal.R.string.kg_text_message_separator);
-        mSubSeparator = getResources().getString(
-                com.android.internal.R.string.kg_sub_separator);
         boolean shouldMarquee = KeyguardUpdateMonitor.getInstance(mContext).isDeviceInteractive();
         setSelected(shouldMarquee); // Allow marquee to work.
     }
@@ -312,7 +374,7 @@ public class CarrierText extends TextView {
 
             case NetworkLocked:
                 carrierText = makeCarrierStringOnEmergencyCapable(
-                        getContext().getText(R.string.keyguard_perso_locked_message), text);
+                        mContext.getText(R.string.keyguard_network_locked_message), text);
                 break;
 
             case SimMissing:
@@ -380,7 +442,7 @@ public class CarrierText extends TextView {
             case ABSENT:
                 return StatusMode.SimMissing;
             case NETWORK_LOCKED:
-                return StatusMode.NetworkLocked;
+                return StatusMode.SimMissingLocked;
             case NOT_READY:
                 return StatusMode.SimNotReady;
             case PIN_REQUIRED:
@@ -400,15 +462,10 @@ public class CarrierText extends TextView {
     }
 
     private static CharSequence concatenate(CharSequence plmn, CharSequence spn) {
-        return concatenate(plmn, spn, mSeparator);
-    }
-
-    private static CharSequence concatenate(CharSequence plmn, CharSequence spn,
-            CharSequence separator) {
         final boolean plmnValid = !TextUtils.isEmpty(plmn);
         final boolean spnValid = !TextUtils.isEmpty(spn);
         if (plmnValid && spnValid) {
-            return new StringBuilder().append(plmn).append(separator).append(spn).toString();
+            return new StringBuilder().append(plmn).append(mSeparator).append(spn).toString();
         } else if (plmnValid) {
             return plmn;
         } else if (spnValid) {
@@ -467,5 +524,18 @@ public class CarrierText extends TextView {
 
             return source;
         }
+    }
+
+    private String networkClassToString (int networkClass) {
+        final int[] classIds =
+            {com.android.internal.R.string.config_rat_unknown,
+            com.android.internal.R.string.config_rat_2g,
+            com.android.internal.R.string.config_rat_3g,
+            com.android.internal.R.string.config_rat_4g };
+        String classString = null;
+        if (networkClass < classIds.length) {
+            classString = getContext().getResources().getString(classIds[networkClass]);
+        }
+        return (classString == null) ? "" : classString;
     }
 }

@@ -44,7 +44,7 @@ import java.util.ArrayList;
  */
 public class Ringtone {
     private static final String TAG = "Ringtone";
-    private static final boolean LOGD = false;
+    private static final boolean LOGD = true;
 
     private static final String[] MEDIA_COLUMNS = new String[] {
         MediaStore.Audio.Media._ID,
@@ -214,19 +214,8 @@ public class Ringtone {
 
             if (Settings.AUTHORITY.equals(authority)) {
                 if (followSettingsUri) {
-                    Uri actualUri;
-                    if (RingtoneManager.getDefaultType(uri) == RingtoneManager.TYPE_RINGTONE) {
-                        actualUri = RingtoneManager.getActualRingtoneUriBySubId(context,
-                             RingtoneManager.getDefaultRingtoneSubIdByUri(uri));
-                    } else {
-                        actualUri = RingtoneManager.getActualDefaultRingtoneUri(context,
-                             RingtoneManager.getDefaultType(uri));
-                    }
-                    if (actualUri == null) {
-                        title = context
-                                .getString(com.android.internal.R.string.ringtone_default);
-                        return title;
-                    }
+                    Uri actualUri = RingtoneManager.getActualDefaultRingtoneUri(context,
+                            RingtoneManager.getDefaultType(uri));
                     String actualTitle = getTitle(
                             context, actualUri, false /*followSettingsUri*/, allowRemote);
                     title = context
@@ -423,9 +412,9 @@ public class Ringtone {
     private boolean playFallbackRingtone() {
         if (mAudioManager.getStreamVolume(AudioAttributes.toLegacyStreamType(mAudioAttributes))
                 != 0) {
-            int subId = RingtoneManager.getDefaultRingtoneSubIdByUri(mUri);
-            if (subId != -1 &&
-                    RingtoneManager.getActualRingtoneUriBySubId(mContext, subId) != null) {
+            int ringtoneType = RingtoneManager.getDefaultType(mUri);
+            if (ringtoneType == -1 ||
+                    RingtoneManager.getActualDefaultRingtoneUri(mContext, ringtoneType) != null) {
                 // Default ringtone, try fallback ringtone.
                 try {
                     AssetFileDescriptor afd = mContext.getResources().openRawResourceFd(

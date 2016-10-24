@@ -53,7 +53,6 @@ public class SignalStrength implements Parcelable {
     public static final int INVALID = 0x7FFFFFFF;
 
     private static final int RSRP_THRESH_TYPE_STRICT = 0;
-    private static final int RSRP_THRESH_TYPE_CUSTOM = 2;
     private static final int[] RSRP_THRESH_STRICT = new int[] {-140, -115, -105, -95, -85, -44};
     private static final int[] RSRP_THRESH_LENIENT = new int[] {-140, -128, -118, -108, -98, -44};
 
@@ -148,10 +147,11 @@ public class SignalStrength implements Parcelable {
             int cdmaDbm, int cdmaEcio,
             int evdoDbm, int evdoEcio, int evdoSnr,
             int lteSignalStrength, int lteRsrp, int lteRsrq, int lteRssnr, int lteCqi,
-            boolean gsmFlag) {
+            int tdScdmaRscp, boolean gsmFlag) {
         initialize(gsmSignalStrength, gsmBitErrorRate, cdmaDbm, cdmaEcio,
                 evdoDbm, evdoEcio, evdoSnr, lteSignalStrength, lteRsrp,
                 lteRsrq, lteRssnr, lteCqi, gsmFlag);
+        mTdScdmaRscp = tdScdmaRscp;
     }
 
     /**
@@ -163,11 +163,10 @@ public class SignalStrength implements Parcelable {
             int cdmaDbm, int cdmaEcio,
             int evdoDbm, int evdoEcio, int evdoSnr,
             int lteSignalStrength, int lteRsrp, int lteRsrq, int lteRssnr, int lteCqi,
-            int tdScdmaRscp, boolean gsmFlag) {
+            boolean gsmFlag) {
         initialize(gsmSignalStrength, gsmBitErrorRate, cdmaDbm, cdmaEcio,
                 evdoDbm, evdoEcio, evdoSnr, lteSignalStrength, lteRsrp,
                 lteRsrq, lteRssnr, lteCqi, gsmFlag);
-        mTdScdmaRscp = tdScdmaRscp;
     }
 
     /**
@@ -405,7 +404,6 @@ public class SignalStrength implements Parcelable {
 
         mTdScdmaRscp = ((mTdScdmaRscp >= 25) && (mTdScdmaRscp <= 120))
                 ? -mTdScdmaRscp : SignalStrength.INVALID;
-
         // Cqi no change
         if (DBG) log("Signal after validate=" + this);
     }
@@ -635,19 +633,37 @@ public class SignalStrength implements Parcelable {
      * @hide
      */
     public int getGsmLevel() {
-        int level;
+        int level = SIGNAL_STRENGTH_NONE_OR_UNKNOWN;
+        if (Resources.getSystem().getBoolean(
+                com.android.internal.R.bool.config_regional_umts_singnal_threshold)) {
+            int dbm = getGsmDbm();
+            int[] threshGsm;
+            threshGsm = Resources.getSystem().getIntArray(
+                    com.android.internal.R.array.umts_signal_strength_threshold);;
+            if (threshGsm.length < 6)
+                return level;
+            if (dbm > threshGsm[5]) level = SIGNAL_STRENGTH_NONE_OR_UNKNOWN;
+            else if (dbm >= threshGsm[4]) level = SIGNAL_STRENGTH_GREAT;
+            else if (dbm >= threshGsm[3]) level = SIGNAL_STRENGTH_GOOD;
+            else if (dbm >= threshGsm[2]) level = SIGNAL_STRENGTH_MODERATE;
+            else if (dbm >= threshGsm[1]) level = SIGNAL_STRENGTH_POOR;
+            else if (dbm >= threshGsm[0]) level = SIGNAL_STRENGTH_NONE_OR_UNKNOWN;
+            if (DBG) log("getCustomizedGsmDbmLevel - dbm:" + dbm + " gsmLevel:"
+                    + level);
+        } else {
+            // ASU ranges from 0 to 31 - TS 27.007 Sec 8.5
+            // asu = 0 (-113dB or less) is very weak
+            // signal, its better to show 0 bars to the user in such cases.
+            // asu = 99 is a special case, where the signal strength is unknown.
+            int asu = getGsmSignalStrength();
+            if (asu <= 2 || asu == 99) level = SIGNAL_STRENGTH_NONE_OR_UNKNOWN;
+            else if (asu >= 12) level = SIGNAL_STRENGTH_GREAT;
+            else if (asu >= 8)  level = SIGNAL_STRENGTH_GOOD;
+            else if (asu >= 5)  level = SIGNAL_STRENGTH_MODERATE;
+            else level = SIGNAL_STRENGTH_POOR;
+            if (DBG) log("getGsmLevel=" + level);
+        }
 
-        // ASU ranges from 0 to 31 - TS 27.007 Sec 8.5
-        // asu = 0 (-113dB or less) is very weak
-        // signal, its better to show 0 bars to the user in such cases.
-        // asu = 99 is a special case, where the signal strength is unknown.
-        int asu = getGsmSignalStrength();
-        if (asu <= 2 || asu == 99) level = SIGNAL_STRENGTH_NONE_OR_UNKNOWN;
-        else if (asu >= 12) level = SIGNAL_STRENGTH_GREAT;
-        else if (asu >= 8)  level = SIGNAL_STRENGTH_GOOD;
-        else if (asu >= 5)  level = SIGNAL_STRENGTH_MODERATE;
-        else level = SIGNAL_STRENGTH_POOR;
-        if (DBG) log("getGsmLevel=" + level);
         return level;
     }
 
@@ -812,11 +828,13 @@ public class SignalStrength implements Parcelable {
         int[] threshRsrp;
         if (rsrpThreshType == RSRP_THRESH_TYPE_STRICT) {
             threshRsrp = RSRP_THRESH_STRICT;
-        } else if (rsrpThreshType == RSRP_THRESH_TYPE_CUSTOM) {
-            threshRsrp = Resources.getSystem().getIntArray(com.android.internal.R.array.
-                    config_LTE_RSRP_custom_levels);
         } else {
             threshRsrp = RSRP_THRESH_LENIENT;
+        }
+        if (Resources.getSystem().getBoolean(
+                com.android.internal.R.bool.config_regional_lte_singnal_threshold)){
+            threshRsrp = Resources.getSystem().getIntArray(
+                    com.android.internal.R.array.lte_signal_strength_threshold);
         }
 
         if (mLteRsrp > threshRsrp[5]) rsrpIconLevel = -1;
@@ -825,6 +843,12 @@ public class SignalStrength implements Parcelable {
         else if (mLteRsrp >= threshRsrp[2]) rsrpIconLevel = SIGNAL_STRENGTH_MODERATE;
         else if (mLteRsrp >= threshRsrp[1]) rsrpIconLevel = SIGNAL_STRENGTH_POOR;
         else if (mLteRsrp >= threshRsrp[0]) rsrpIconLevel = SIGNAL_STRENGTH_NONE_OR_UNKNOWN;
+
+        if (Resources.getSystem().getBoolean(
+                com.android.internal.R.bool.config_regional_lte_singnal_threshold)){
+            log("getLTELevel - rsrp = " + rsrpIconLevel);
+            if (rsrpIconLevel != -1) return rsrpIconLevel;
+        }
 
         /*
          * Values are -200 dB to +300 (SNR*10dB) RS_SNR >= 13.0 dB =>4 bars 4.5
@@ -952,7 +976,7 @@ public class SignalStrength implements Parcelable {
         return tdScdmaAsuLevel;
     }
 
-    /**
+   /**
      * @return hash code
      */
     @Override

@@ -16,23 +16,16 @@
 package com.android.server.notification;
 
 public interface RankingConfig {
-    int getPackagePriority(String packageName, int uid);
 
-    void setPackagePriority(String packageName, int uid, int priority);
+    int getPriority(String packageName, int uid);
 
-    boolean getPackagePeekable(String packageName, int uid);
+    void setPriority(String packageName, int uid, int priority);
 
-    void setPackagePeekable(String packageName, int uid, boolean peekable);
+    int getVisibilityOverride(String packageName, int uid);
 
-    int getPackageVisibilityOverride(String packageName, int uid);
+    void setVisibilityOverride(String packageName, int uid, int visibility);
 
-    void setPackageVisibilityOverride(String packageName, int uid, int visibility);
+    void setImportance(String packageName, int uid, int importance);
 
-    void setShowNotificationForPackageOnKeyguard(String packageName, int uid, int status);
-
-    int getShowNotificationForPackageOnKeyguard(String packageName, int uid);
-
-    boolean isPackageAllowedForHalo(String packageName, int uid);
-
-    void setHaloPolicyBlack(String packagename, int uid, boolean floating);
+    int getImportance(String packageName, int uid);
 }

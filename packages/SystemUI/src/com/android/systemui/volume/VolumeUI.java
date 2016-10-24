@@ -27,7 +27,6 @@ import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
-import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.media.AudioManager;
 import android.media.session.MediaSessionManager;
@@ -64,8 +63,6 @@ public class VolumeUI extends SystemUI {
 
     private VolumeDialogComponent mVolumeComponent;
 
-    private Configuration mConfiguration;
-
     @Override
     public void start() {
         mEnabled = mContext.getResources().getBoolean(R.bool.enable_volume_ui);
@@ -83,7 +80,6 @@ public class VolumeUI extends SystemUI {
                 mContext, Settings.Secure.VOLUME_CONTROLLER_SERVICE_COMPONENT,
                 new ServiceMonitorCallbacks());
         mVolumeControllerService.start();
-        mConfiguration = new Configuration(mContext.getResources().getConfiguration());
     }
 
     private VolumeComponent getVolumeComponent() {
@@ -95,20 +91,6 @@ public class VolumeUI extends SystemUI {
         super.onConfigurationChanged(newConfig);
         if (!mEnabled) return;
         getVolumeComponent().onConfigurationChanged(newConfig);
-
-        if (isThemeChange(newConfig)) {
-            mContext.recreateTheme();
-            mVolumeComponent.recreateDialog();
-        }
-        mConfiguration.setTo(newConfig);
-    }
-
-    private boolean isThemeChange(Configuration newConfig) {
-        if (mConfiguration != null) {
-            int changes = mConfiguration.updateFrom(newConfig);
-            return (changes & ActivityInfo.CONFIG_THEME_RESOURCE) != 0;
-        }
-        return false;
     }
 
     @Override
@@ -246,22 +228,23 @@ public class VolumeUI extends SystemUI {
             }
             final Intent intent =  new Intent(Receiver.DISABLE)
                     .putExtra(Receiver.EXTRA_COMPONENT, component);
+            Notification.Builder builder = new Notification.Builder(mContext)
+                    .setSmallIcon(R.drawable.ic_volume_media)
+                    .setWhen(0)
+                    .setShowWhen(false)
+                    .setOngoing(true)
+                    .setContentTitle(mContext.getString(
+                            R.string.volumeui_notification_title, getAppLabel(component)))
+                    .setContentText(mContext.getString(R.string.volumeui_notification_text))
+                    .setContentIntent(PendingIntent.getBroadcast(mContext, 0, intent,
+                            PendingIntent.FLAG_UPDATE_CURRENT))
+                    .setPriority(Notification.PRIORITY_MIN)
+                    .setVisibility(Notification.VISIBILITY_PUBLIC)
+                    .setColor(mContext.getColor(
+                            com.android.internal.R.color.system_notification_accent_color));
+            overrideNotificationAppName(mContext, builder);
             mNotificationManager.notify(R.id.notification_volumeui,
-                    new Notification.Builder(mContext)
-                            .setSmallIcon(R.drawable.ic_volume_media)
-                            .setWhen(0)
-                            .setShowWhen(false)
-                            .setOngoing(true)
-                            .setContentTitle(mContext.getString(
-                                    R.string.volumeui_notification_title, getAppLabel(component)))
-                            .setContentText(mContext.getString(R.string.volumeui_notification_text))
-                            .setContentIntent(PendingIntent.getBroadcast(mContext, 0, intent,
-                                    PendingIntent.FLAG_UPDATE_CURRENT))
-                            .setPriority(Notification.PRIORITY_MIN)
-                            .setVisibility(Notification.VISIBILITY_PUBLIC)
-                            .setColor(mContext.getColor(
-                                    com.android.internal.R.color.system_notification_accent_color))
-                            .build());
+                    builder.build());
         }
     }
 }

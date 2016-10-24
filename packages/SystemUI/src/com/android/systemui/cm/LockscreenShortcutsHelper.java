@@ -53,15 +53,9 @@ public class LockscreenShortcutsHelper {
         if (listener != null) {
             mListener = listener;
             mHandler = new Handler(Looper.getMainLooper());
-            registerAndFetchTargets();
-        } else {
-            fetchTargets();
+            mContext.getContentResolver().registerContentObserver(
+                    CMSettings.Secure.getUriFor(CMSettings.Secure.LOCKSCREEN_TARGETS), false, mObserver);
         }
-    }
-
-    public void registerAndFetchTargets() {
-        mContext.getContentResolver().registerContentObserver(
-                CMSettings.Secure.getUriFor(CMSettings.Secure.LOCKSCREEN_TARGETS), false, mObserver);
         fetchTargets();
     }
 
@@ -82,6 +76,7 @@ public class LockscreenShortcutsHelper {
 
     public void cleanup() {
         mContext.getContentResolver().unregisterContentObserver(mObserver);
+        mListener = null;
     }
 
     public static class TargetInfo {

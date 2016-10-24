@@ -16,23 +16,30 @@
 
 package android.media;
 
-import com.android.internal.database.SortCursor;
-
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
 import android.app.Activity;
+import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Environment;
+import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.provider.Settings.System;
 import android.util.Log;
 
+import com.android.internal.database.SortCursor;
+
+import libcore.io.Streams;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -184,16 +191,6 @@ public class RingtoneManager {
      */
     public static final String EXTRA_RINGTONE_PICKED_URI =
             "android.intent.extra.ringtone.PICKED_URI";
-
-    /**
-     * Set the resource id theme to use for the dialog picker activity.<br/>
-     * The default theme is <code>com.android.internal.R.Theme_Holo_Dialog_Alert</code>.
-     *
-     * @see #ACTION_RINGTONE_PICKER
-     * @hide
-     */
-    public static final String EXTRA_RINGTONE_DIALOG_THEME =
-            "android.intent.extra.ringtone.DIALOG_THEME";
     
     // Make sure the column ordering and then ..._COLUMN_INDEX are in sync
     
@@ -227,9 +224,9 @@ public class RingtoneManager {
      */
     public static final int URI_COLUMN_INDEX = 2;
 
-    private Activity mActivity;
-    private Context mContext;
-    
+    private final Activity mActivity;
+    private final Context mContext;
+
     private Cursor mCursor;
 
     private int mType = TYPE_RINGTONE;
@@ -250,7 +247,8 @@ public class RingtoneManager {
      * @param activity The activity used to get a managed cursor.
      */
     public RingtoneManager(Activity activity) {
-        mContext = mActivity = activity;
+        mActivity = activity;
+        mContext = activity;
         setType(mType);
     }
 
@@ -262,6 +260,7 @@ public class RingtoneManager {
      * @param context The context to used to get a cursor.
      */
     public RingtoneManager(Context context) {
+        mActivity = null;
         mContext = context;
         setType(mType);
     }
@@ -275,7 +274,6 @@ public class RingtoneManager {
      * @see #EXTRA_RINGTONE_TYPE           
      */
     public void setType(int type) {
-
         if (mCursor != null) {
             throw new IllegalStateException(
                     "Setting filter columns should be done before querying for ringtones.");
@@ -645,7 +643,8 @@ public class RingtoneManager {
     public static Uri getActualDefaultRingtoneUri(Context context, int type) {
         String setting = getSettingForType(type);
         if (setting == null) return null;
-        final String uriString = Settings.System.getString(context.getContentResolver(), setting);
+        final String uriString = Settings.System.getStringForUser(context.getContentResolver(),
+                setting, context.getUserId());
         return uriString != null ? Uri.parse(uriString) : null;
     }
     
@@ -660,12 +659,48 @@ public class RingtoneManager {
      * @see #getActualDefaultRingtoneUri(Context, int)
      */
     public static void setActualDefaultRingtoneUri(Context context, int type, Uri ringtoneUri) {
+        final ContentResolver resolver = context.getContentResolver();
+
         String setting = getSettingForType(type);
         if (setting == null) return;
-        Settings.System.putString(context.getContentResolver(), setting,
-                ringtoneUri != null ? ringtoneUri.toString() : null);
+        Settings.System.putStringForUser(resolver, setting,
+                ringtoneUri != null ? ringtoneUri.toString() : null, context.getUserId());
+
+        // Stream selected ringtone into cache so it's available for playback
+        // when CE storage is still locked
+        if (ringtoneUri != null) {
+            final Uri cacheUri = getCacheForType(type);
+            try (InputStream in = openRingtone(context, ringtoneUri);
+                    OutputStream out = resolver.openOutputStream(cacheUri)) {
+                Streams.copy(in, out);
+            } catch (IOException e) {
+                Log.w(TAG, "Failed to cache ringtone: " + e);
+            }
+        }
     }
-    
+
+    /**
+     * Try opening the given ringtone locally first, but failover to
+     * {@link IRingtonePlayer} if we can't access it directly. Typically happens
+     * when process doesn't hold
+     * {@link android.Manifest.permission#READ_EXTERNAL_STORAGE}.
+     */
+    private static InputStream openRingtone(Context context, Uri uri) throws IOException {
+        final ContentResolver resolver = context.getContentResolver();
+        try {
+            return resolver.openInputStream(uri);
+        } catch (SecurityException | IOException e) {
+            Log.w(TAG, "Failed to open directly; attempting failover: " + e);
+            final IRingtonePlayer player = context.getSystemService(AudioManager.class)
+                    .getRingtonePlayer();
+            try {
+                return new ParcelFileDescriptor.AutoCloseInputStream(player.openRingtone(uri));
+            } catch (Exception e2) {
+                throw new IOException(e2);
+            }
+        }
+    }
+
     private static String getSettingForType(int type) {
         if ((type & TYPE_RINGTONE) != 0) {
             return Settings.System.RINGTONE;
@@ -677,7 +712,20 @@ public class RingtoneManager {
             return null;
         }
     }
-    
+
+    /** {@hide} */
+    public static Uri getCacheForType(int type) {
+        if ((type & TYPE_RINGTONE) != 0) {
+            return Settings.System.RINGTONE_CACHE_URI;
+        } else if ((type & TYPE_NOTIFICATION) != 0) {
+            return Settings.System.NOTIFICATION_SOUND_CACHE_URI;
+        } else if ((type & TYPE_ALARM) != 0) {
+            return Settings.System.ALARM_ALERT_CACHE_URI;
+        } else {
+            return null;
+        }
+    }
+
     /**
      * Returns whether the given {@link Uri} is one of the default ringtones.
      * 
@@ -700,9 +748,7 @@ public class RingtoneManager {
     public static int getDefaultType(Uri defaultRingtoneUri) {
         if (defaultRingtoneUri == null) {
             return -1;
-        } else if (defaultRingtoneUri.equals(Settings.System.DEFAULT_RINGTONE_URI) ||
-            defaultRingtoneUri.equals(Settings.System.DEFAULT_RINGTONE_URI_2) ||
-            defaultRingtoneUri.equals(Settings.System.DEFAULT_RINGTONE_URI_3)) {
+        } else if (defaultRingtoneUri.equals(Settings.System.DEFAULT_RINGTONE_URI)) {
             return TYPE_RINGTONE;
         } else if (defaultRingtoneUri.equals(Settings.System.DEFAULT_NOTIFICATION_URI)) {
             return TYPE_NOTIFICATION;
@@ -733,106 +779,5 @@ public class RingtoneManager {
             return null;
         }
     }
-
-    /**
-     * Returns the subscription ID of {@link Uri}.
-     *
-     * @param defaultRingtoneUri The default {@link Uri}. For example,
-     *            {@link System#DEFAULT_RINGTONE_URI},
-     *            {@link System#DEFAULT_RINGTONE_URI_2}, or
-     *            {@link System#DEFAULT_RINGTONE_URI_3}.
-     * @return The Subscription ID of the defaultRingtoneUri, or -1.
-     * @hide
-     */
-    public static int getDefaultRingtoneSubIdByUri(Uri defaultRingtoneUri) {
-        if (defaultRingtoneUri == null) {
-            return -1;
-        }
-        /**
-         * URI is encoded as below:
-         * DEFAULT_RINGTONE_URI: content://settings/system/ringtone
-         * DEFAULT_RINGTONE_URI_2: content://settings/system/ringtone_2
-         * DEFAULT_RINGTONE_URI_3: content://settings/system/ringtone_3
-         */
-        if (defaultRingtoneUri.equals(Settings.System.DEFAULT_RINGTONE_URI)) {
-            return 0; /* Sub-1 */
-        }
-        final String uriString = defaultRingtoneUri.toString();
-        int parsedSubId = -1;
-        if (uriString.startsWith(Settings.System.DEFAULT_RINGTONE_URI.toString())) {
-            parsedSubId = Integer.parseInt(uriString.substring(uriString.lastIndexOf("_") + 1));
-            if ((parsedSubId > 0 &&  parsedSubId <= Settings.System.MAX_NUM_RINGTONES)) {
-                return parsedSubId - 1;
-            }
-        }
-        return -1;
-    }
-
-    /**
-     * Gets the actual default sound's {@link Uri}. This will give the actual
-     * sound {@link Uri}, instead of using this, most clients can use
-     * {@link System#DEFAULT_RINGTONE_URI}.
-     *
-     * @param subId The Subscription ID.
-     * @return A {@link Uri} pointing to the default sound for the sound type.
-     * @hide
-     */
-    public static Uri getDefaultRingtoneUriBySubId(int subId) {
-        if (!(subId >= 0 &&  subId < Settings.System.MAX_NUM_RINGTONES)) {
-            return null;
-        }
-        if (subId == 0) {
-            return Settings.System.DEFAULT_RINGTONE_URI;
-        } else {
-            final String uriString =
-                    Settings.System.DEFAULT_RINGTONE_URI.toString() + "_" + (subId + 1);
-            return Uri.parse(uriString);
-        }
-    }
-
-    /**
-     * Gets the current default sound's {@link Uri}. This will give the actual
-     * sound {@link Uri}, instead of using this, most clients can use
-     * {@link System#DEFAULT_RINGTONE_URI}.
-     *
-     * @param context A context used for querying.
-     * @param subId The Subscription ID.
-     * @return A {@link Uri} pointing to the default sound for the sound type.
-     * @hide
-     */
-    public static Uri getActualRingtoneUriBySubId(Context context, int subId) {
-        if (!(subId >= 0 &&  subId < Settings.System.MAX_NUM_RINGTONES)) {
-            return null;
-        }
-        String setting;
-        if (subId == 0) {
-            setting = Settings.System.RINGTONE;
-        } else {
-            setting = Settings.System.RINGTONE + "_" + (subId + 1);
-        }
-        final String uriString = Settings.System.getString(context.getContentResolver(), setting);
-        return uriString != null ? Uri.parse(uriString) : null;
-    }
-
-    /**
-     * Sets the {@link Uri} of the default sound for a given sound type.
-     *
-     * @param context A context used for querying.
-     * @param subId The Subscription ID.
-     * @param ringtoneUri A {@link Uri} pointing to the default sound to set.
-     * @hide
-     */
-    public static void setActualRingtoneUriBySubId(Context context, int subId, Uri ringtoneUri) {
-        if (!(subId >= 0 &&  subId < Settings.System.MAX_NUM_RINGTONES)) {
-            return;
-        }
-        String setting;
-        if (subId == 0) {
-            setting = Settings.System.RINGTONE;
-        } else {
-            setting = Settings.System.RINGTONE + "_" + (subId + 1);
-        }
-        Settings.System.putString(context.getContentResolver(), setting,
-                ringtoneUri != null ? ringtoneUri.toString() : null);
-    }
+    
 }

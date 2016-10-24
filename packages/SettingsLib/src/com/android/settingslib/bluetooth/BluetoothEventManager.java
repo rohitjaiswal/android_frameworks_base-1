@@ -120,6 +120,12 @@ public final class BluetoothEventManager {
         registerProfileIntentReceiver();
     }
 
+    public void setDefaultReceiverHandler() {
+        mContext.unregisterReceiver(mBroadcastReceiver);
+        mContext.registerReceiver(mBroadcastReceiver, mAdapterIntentFilter, null, mReceiverHandler);
+        registerProfileIntentReceiver();
+    }
+
     /** Register to start receiving callbacks for Bluetooth events. */
     public void registerCallback(BluetoothCallback callback) {
         synchronized (mCallbacks) {
@@ -270,16 +276,16 @@ public final class BluetoothEventManager {
             if (cachedDevice == null) {
                 Log.w(TAG, "CachedBluetoothDevice for device " + device +
                         " not found, calling readPairedDevices().");
-                if (!readPairedDevices()) {
-                    Log.e(TAG, "Got bonding state changed for " + device +
-                            ", but we have no record of that device.");
-                    return;
+                if (readPairedDevices()) {
+                    cachedDevice = mDeviceManager.findDevice(device);
                 }
-                cachedDevice = mDeviceManager.findDevice(device);
+
                 if (cachedDevice == null) {
-                    Log.e(TAG, "Got bonding state changed for " + device +
-                            ", but device not added in cache.");
-                    return;
+                    Log.w(TAG, "Got bonding state changed for " + device +
+                            ", but we have no record of that device.");
+
+                    cachedDevice = mDeviceManager.addDevice(mLocalAdapter, mProfileManager, device);
+                    dispatchDeviceAdded(cachedDevice);
                 }
             }
 

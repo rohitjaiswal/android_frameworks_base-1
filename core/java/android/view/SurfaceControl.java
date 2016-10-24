@@ -36,6 +36,7 @@ public class SurfaceControl {
             throws OutOfResourcesException;
     private static native void nativeRelease(long nativeObject);
     private static native void nativeDestroy(long nativeObject);
+    private static native void nativeDisconnect(long nativeObject);
 
     private static native Bitmap nativeScreenshot(IBinder displayToken,
             Rect sourceCrop, int width, int height, int minLayer, int maxLayer,
@@ -45,23 +46,20 @@ public class SurfaceControl {
             boolean allLayers, boolean useIdentityTransform);
 
     private static native void nativeOpenTransaction();
-    private static native void nativeCloseTransaction();
+    private static native void nativeCloseTransaction(boolean sync);
     private static native void nativeSetAnimationTransaction();
 
     private static native void nativeSetLayer(long nativeObject, int zorder);
     private static native void nativeSetPosition(long nativeObject, float x, float y);
+    private static native void nativeSetPositionAppliesWithResize(long nativeObject);
     private static native void nativeSetSize(long nativeObject, int w, int h);
     private static native void nativeSetTransparentRegionHint(long nativeObject, Region region);
     private static native void nativeSetAlpha(long nativeObject, float alpha);
     private static native void nativeSetMatrix(long nativeObject, float dsdx, float dtdx, float dsdy, float dtdy);
     private static native void nativeSetFlags(long nativeObject, int flags, int mask);
     private static native void nativeSetWindowCrop(long nativeObject, int l, int t, int r, int b);
+    private static native void nativeSetFinalCrop(long nativeObject, int l, int t, int r, int b);
     private static native void nativeSetLayerStack(long nativeObject, int layerStack);
-
-    private static native void nativeSetBlur(long nativeObject, float blur);
-    private static native void nativeSetBlurMaskSurface(long nativeObject, long maskLayerNativeObject);
-    private static native void nativeSetBlurMaskSampling(long nativeObject, int blurMaskSampling);
-    private static native void nativeSetBlurMaskAlphaThreshold(long nativeObject, float alpha);
 
     private static native boolean nativeClearContentFrameStats(long nativeObject);
     private static native boolean nativeGetContentFrameStats(long nativeObject, WindowContentFrameStats outStats);
@@ -86,6 +84,12 @@ public class SurfaceControl {
     private static native boolean nativeSetActiveConfig(IBinder displayToken, int id);
     private static native void nativeSetDisplayPowerMode(
             IBinder displayToken, int mode);
+    private static native void nativeDeferTransactionUntil(long nativeObject,
+            IBinder handle, long frame);
+    private static native void nativeSetOverrideScalingMode(long nativeObject,
+            int scalingMode);
+    private static native IBinder nativeGetHandle(long nativeObject);
+    private static native Display.HdrCapabilities nativeGetHdrCapabilities(IBinder displayToken);
 
 
     private final CloseGuard mCloseGuard = CloseGuard.get();
@@ -173,11 +177,6 @@ public class SurfaceControl {
      *
      */
     public static final int FX_SURFACE_NORMAL   = 0x00000000;
-
-    /**
-     * Surface creation flag: Creates a blur surface.
-     */
-    public static final int FX_SURFACE_BLUR = 0x00010000;
 
     /**
      * Surface creation flag: Creates a Dim surface.
@@ -354,6 +353,15 @@ public class SurfaceControl {
         mCloseGuard.close();
     }
 
+    /**
+     * Disconnect any client still connected to the surface.
+     */
+    public void disconnect() {
+        if (mNativeObject != 0) {
+            nativeDisconnect(mNativeObject);
+        }
+    }
+
     private void checkNotReleased() {
         if (mNativeObject == 0) throw new NullPointerException(
                 "mNativeObject is null. Have you called release() already?");
@@ -371,7 +379,24 @@ public class SurfaceControl {
 
     /** end a transaction */
     public static void closeTransaction() {
-        nativeCloseTransaction();
+        nativeCloseTransaction(false);
+    }
+
+    public static void closeTransactionSync() {
+        nativeCloseTransaction(true);
+    }
+
+    public void deferTransactionUntil(IBinder handle, long frame) {
+        nativeDeferTransactionUntil(mNativeObject, handle, frame);
+    }
+
+    public void setOverrideScalingMode(int scalingMode) {
+        checkNotReleased();
+        nativeSetOverrideScalingMode(mNativeObject, scalingMode);
+    }
+
+    public IBinder getHandle() {
+        return nativeGetHandle(mNativeObject);
     }
 
     /** flag the transaction as an animation */
@@ -389,32 +414,19 @@ public class SurfaceControl {
         nativeSetPosition(mNativeObject, x, y);
     }
 
+    /**
+     * If the size changes in this transaction, position updates specified
+     * in this transaction will not complete until a buffer of the new size
+     * arrives.
+     */
+    public void setPositionAppliesWithResize() {
+        checkNotReleased();
+        nativeSetPositionAppliesWithResize(mNativeObject);
+    }
+
     public void setSize(int w, int h) {
         checkNotReleased();
         nativeSetSize(mNativeObject, w, h);
-    }
-
-    public void setBlur(float blur) {
-        checkNotReleased();
-        nativeSetBlur(mNativeObject, blur);
-    }
-
-    public void setBlurMaskSurface(SurfaceControl maskSurface) {
-        checkNotReleased();
-        if (maskSurface != null) {
-            maskSurface.checkNotReleased();
-        }
-        nativeSetBlurMaskSurface(mNativeObject, maskSurface == null ? 0:maskSurface.mNativeObject);
-    }
-
-    public void setBlurMaskSampling(int blurMaskSampling) {
-        checkNotReleased();
-        nativeSetBlurMaskSampling(mNativeObject, blurMaskSampling);
-    }
-
-    public void setBlurMaskAlphaThreshold(float alpha) {
-        checkNotReleased();
-        nativeSetBlurMaskAlphaThreshold(mNativeObject, alpha);
     }
 
     public void hide() {
@@ -471,6 +483,16 @@ public class SurfaceControl {
                 crop.left, crop.top, crop.right, crop.bottom);
         } else {
             nativeSetWindowCrop(mNativeObject, 0, 0, 0, 0);
+        }
+    }
+
+    public void setFinalCrop(Rect crop) {
+        checkNotReleased();
+        if (crop != null) {
+            nativeSetFinalCrop(mNativeObject,
+                crop.left, crop.top, crop.right, crop.bottom);
+        } else {
+            nativeSetFinalCrop(mNativeObject, 0, 0, 0, 0);
         }
     }
 
@@ -654,6 +676,13 @@ public class SurfaceControl {
         }
 
         nativeSetDisplaySize(displayToken, width, height);
+    }
+
+    public static Display.HdrCapabilities getHdrCapabilities(IBinder displayToken) {
+        if (displayToken == null) {
+            throw new IllegalArgumentException("displayToken must not be null");
+        }
+        return nativeGetHdrCapabilities(displayToken);
     }
 
     public static IBinder createDisplay(String name, boolean secure) {

@@ -20,6 +20,7 @@ import com.android.org.conscrypt.TrustManagerImpl;
 
 import android.util.ArrayMap;
 import java.io.IOException;
+import java.net.Socket;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.GeneralSecurityException;
@@ -29,34 +30,34 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.X509ExtendedTrustManager;
 
 /**
- * {@link X509TrustManager} that implements the trust anchor and pinning for a
+ * {@link X509ExtendedTrustManager} that implements the trust anchor and pinning for a
  * given {@link NetworkSecurityConfig}.
  * @hide
  */
-public class NetworkSecurityTrustManager implements X509TrustManager {
+public class NetworkSecurityTrustManager extends X509ExtendedTrustManager {
     // TODO: Replace this with a general X509TrustManager and use duck-typing.
     private final TrustManagerImpl mDelegate;
     private final NetworkSecurityConfig mNetworkSecurityConfig;
+    private final Object mIssuersLock = new Object();
+
+    private X509Certificate[] mIssuers;
 
     public NetworkSecurityTrustManager(NetworkSecurityConfig config) {
         if (config == null) {
             throw new NullPointerException("config must not be null");
         }
         mNetworkSecurityConfig = config;
-        // TODO: Create our own better KeyStoreImpl
         try {
+            TrustedCertificateStoreAdapter certStore = new TrustedCertificateStoreAdapter(config);
+            // Provide an empty KeyStore since TrustManagerImpl doesn't support null KeyStores.
+            // TrustManagerImpl will use certStore to lookup certificates.
             KeyStore store = KeyStore.getInstance(KeyStore.getDefaultType());
             store.load(null);
-            int certNum = 0;
-            for (TrustAnchor anchor : mNetworkSecurityConfig.getTrustAnchors()) {
-                store.setEntry(String.valueOf(certNum++),
-                        new KeyStore.TrustedCertificateEntry(anchor.certificate),
-                        null);
-            }
-            mDelegate = new TrustManagerImpl(store);
+            mDelegate = new TrustManagerImpl(store, null, certStore);
         } catch (GeneralSecurityException | IOException e) {
             throw new RuntimeException(e);
         }
@@ -65,13 +66,41 @@ public class NetworkSecurityTrustManager implements X509TrustManager {
     @Override
     public void checkClientTrusted(X509Certificate[] chain, String authType)
             throws CertificateException {
-        throw new CertificateException("Client authentication not supported");
+        mDelegate.checkClientTrusted(chain, authType);
+    }
+
+    @Override
+    public void checkClientTrusted(X509Certificate[] certs, String authType, Socket socket)
+            throws CertificateException {
+        mDelegate.checkClientTrusted(certs, authType, socket);
+    }
+
+    @Override
+    public void checkClientTrusted(X509Certificate[] certs, String authType, SSLEngine engine)
+            throws CertificateException {
+        mDelegate.checkClientTrusted(certs, authType, engine);
     }
 
     @Override
     public void checkServerTrusted(X509Certificate[] certs, String authType)
             throws CertificateException {
-        checkServerTrusted(certs, authType, null);
+        checkServerTrusted(certs, authType, (String) null);
+    }
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] certs, String authType, Socket socket)
+            throws CertificateException {
+        List<X509Certificate> trustedChain =
+                mDelegate.getTrustedChainForServer(certs, authType, socket);
+        checkPins(trustedChain);
+    }
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] certs, String authType, SSLEngine engine)
+            throws CertificateException {
+        List<X509Certificate> trustedChain =
+                mDelegate.getTrustedChainForServer(certs, authType, engine);
+        checkPins(trustedChain);
     }
 
     /**
@@ -84,15 +113,6 @@ public class NetworkSecurityTrustManager implements X509TrustManager {
         List<X509Certificate> trustedChain = mDelegate.checkServerTrusted(certs, authType, host);
         checkPins(trustedChain);
         return trustedChain;
-    }
-
-    /**
-     * Check if the provided certificate is a user added certificate authority.
-     * This is required by android.net.http.X509TrustManagerExtensions.
-     */
-    public boolean isUserAddedCertificate(X509Certificate cert) {
-        // TODO: Figure out the right way to handle this, and if it is still even used.
-        return false;
     }
 
     private void checkPins(List<X509Certificate> chain) throws CertificateException {
@@ -143,6 +163,26 @@ public class NetworkSecurityTrustManager implements X509TrustManager {
 
     @Override
     public X509Certificate[] getAcceptedIssuers() {
-        return new X509Certificate[0];
+        // TrustManagerImpl only looks at the provided KeyStore and not the TrustedCertificateStore
+        // for getAcceptedIssuers, so implement it here instead of delegating.
+        synchronized (mIssuersLock) {
+            if (mIssuers == null) {
+                Set<TrustAnchor> anchors = mNetworkSecurityConfig.getTrustAnchors();
+                X509Certificate[] issuers = new X509Certificate[anchors.size()];
+                int i = 0;
+                for (TrustAnchor anchor : anchors) {
+                    issuers[i++] = anchor.certificate;
+                }
+                mIssuers = issuers;
+            }
+            return mIssuers.clone();
+        }
+    }
+
+    public void handleTrustStorageUpdate() {
+        synchronized (mIssuersLock) {
+            mIssuers = null;
+            mDelegate.handleTrustStorageUpdate();
+        }
     }
 }

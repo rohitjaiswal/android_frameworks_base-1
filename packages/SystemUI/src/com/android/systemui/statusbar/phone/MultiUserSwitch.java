@@ -25,12 +25,14 @@ import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.Button;
 import android.widget.FrameLayout;
 
 import com.android.systemui.R;
 import com.android.systemui.qs.QSPanel;
 import com.android.systemui.statusbar.policy.KeyguardUserSwitcher;
-import com.android.systemui.statusbar.policy.UserInfoController;
 import com.android.systemui.statusbar.policy.UserSwitcherController;
 
 /**
@@ -38,20 +40,16 @@ import com.android.systemui.statusbar.policy.UserSwitcherController;
  */
 public class MultiUserSwitch extends FrameLayout implements View.OnClickListener {
 
-    public static final String INTENT_EXTRA_NEW_LOCAL_PROFILE = "newLocalProfile";
-
     private QSPanel mQsPanel;
     private KeyguardUserSwitcher mKeyguardUserSwitcher;
     private boolean mKeyguardMode;
     private UserSwitcherController.BaseUserAdapter mUserListener;
 
     final UserManager mUserManager;
-    private ActivityStarter mActivityStarter;
 
     private final int[] mTmpInt2 = new int[2];
 
     private UserSwitcherController mUserSwitcherController;
-    private UserInfoController mUserInfoController;
 
     public MultiUserSwitch(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -70,6 +68,13 @@ public class MultiUserSwitch extends FrameLayout implements View.OnClickListener
         setUserSwitcherController(qsPanel.getHost().getUserSwitcherController());
     }
 
+    public boolean hasMultipleUsers() {
+        if (mUserListener == null) {
+            return false;
+        }
+        return mUserListener.getCount() != 0;
+    }
+
     public void setUserSwitcherController(UserSwitcherController userSwitcherController) {
         mUserSwitcherController = userSwitcherController;
         registerListener();
@@ -86,7 +91,7 @@ public class MultiUserSwitch extends FrameLayout implements View.OnClickListener
     }
 
     private void registerListener() {
-        if (UserSwitcherController.isUserSwitcherAvailable(mUserManager) && mUserListener == null) {
+        if (mUserManager.isUserSwitcherEnabled() && mUserListener == null) {
 
             final UserSwitcherController controller = mUserSwitcherController;
             if (controller != null) {
@@ -106,13 +111,9 @@ public class MultiUserSwitch extends FrameLayout implements View.OnClickListener
         }
     }
 
-    public void setActivityStarter(ActivityStarter activityStarter) {
-        mActivityStarter = activityStarter;
-    }
-
     @Override
     public void onClick(View v) {
-        if (UserSwitcherController.isUserSwitcherAvailable(mUserManager)) {
+        if (mUserManager.isUserSwitcherEnabled()) {
             if (mKeyguardMode) {
                 if (mKeyguardUserSwitcher != null) {
                     mKeyguardUserSwitcher.show(true /* animate */);
@@ -129,19 +130,11 @@ public class MultiUserSwitch extends FrameLayout implements View.OnClickListener
                         mTmpInt2);
             }
         } else {
-            Intent intent;
-            if (mUserInfoController == null || mUserInfoController.isProfileSetup()) {
-                intent = ContactsContract.QuickContact.composeQuickContactsIntent(
+            if (mQsPanel != null) {
+                Intent intent = ContactsContract.QuickContact.composeQuickContactsIntent(
                         getContext(), v, ContactsContract.Profile.CONTENT_URI,
                         ContactsContract.QuickContact.MODE_LARGE, null);
-            } else {
-                intent = new Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI);
-                intent.putExtra(INTENT_EXTRA_NEW_LOCAL_PROFILE, true);
-            }
-            if (mActivityStarter != null) {
-                mActivityStarter.startActivity(intent, true /* dismissShade */);
-            } else {
-                getContext().startActivityAsUser(intent, new UserHandle(UserHandle.USER_CURRENT));
+                mQsPanel.getHost().startActivityDismissingKeyguard(intent);
             }
         }
     }
@@ -154,30 +147,17 @@ public class MultiUserSwitch extends FrameLayout implements View.OnClickListener
 
     private void refreshContentDescription() {
         String currentUser = null;
-        if (UserSwitcherController.isUserSwitcherAvailable(mUserManager)
+        if (mUserManager.isUserSwitcherEnabled()
                 && mUserSwitcherController != null) {
             currentUser = mUserSwitcherController.getCurrentUserName(mContext);
         }
 
         String text = null;
-        if (isClickable()) {
-            if (UserSwitcherController.isUserSwitcherAvailable(mUserManager)) {
-                if (TextUtils.isEmpty(currentUser)) {
-                    text = mContext.getString(R.string.accessibility_multi_user_switch_switcher);
-                } else {
-                    text = mContext.getString(
-                            R.string.accessibility_multi_user_switch_switcher_with_current,
-                            currentUser);
-                }
-            } else {
-                text = mContext.getString(R.string.accessibility_multi_user_switch_quick_contact);
-            }
-        } else {
-            if (!TextUtils.isEmpty(currentUser)) {
-                text = mContext.getString(
-                        R.string.accessibility_multi_user_switch_inactive,
-                        currentUser);
-            }
+
+        if (!TextUtils.isEmpty(currentUser)) {
+            text = mContext.getString(
+                    R.string.accessibility_quick_settings_user,
+                    currentUser);
         }
 
         if (!TextUtils.equals(getContentDescription(), text)) {
@@ -186,11 +166,20 @@ public class MultiUserSwitch extends FrameLayout implements View.OnClickListener
     }
 
     @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(Button.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(Button.class.getName());
+    }
+
+    @Override
     public boolean hasOverlappingRendering() {
         return false;
     }
 
-    public void setUserInfoController(UserInfoController userInfoController) {
-        mUserInfoController = userInfoController;
-    }
 }

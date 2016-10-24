@@ -162,15 +162,6 @@ static void effectCallback(int event, void* user, void *info) {
         ALOGV("EVENT_PARAMETER_CHANGED");
        break;
     case AudioEffect::EVENT_ERROR:
-        if (info == 0) {
-            ALOGW("EVENT_ERROR info == NULL");
-            goto effectCallback_Exit;
-        }
-        status_t status = *(status_t *)info;
-        if (status == DEAD_OBJECT) {
-            ALOGE("effectCallback: Client died, no need to send callback");
-            goto effectCallback_Exit;
-        }
         ALOGW("EVENT_ERROR");
         break;
     }
@@ -360,7 +351,7 @@ android_media_AudioEffect_native_setup(JNIEnv *env, jobject thiz, jobject weak_t
                                     priority,
                                     effectCallback,
                                     &lpJniStorage->mCallbackData,
-                                    sessionId,
+                                    (audio_session_t) sessionId,
                                     0);
     if (lpAudioEffect == 0) {
         ALOGE("Error creating AudioEffect");
@@ -828,7 +819,7 @@ android_media_AudioEffect_native_queryPreProcessings(JNIEnv *env, jclass clazz _
     effect_descriptor_t *descriptors = new effect_descriptor_t[AudioEffect::kMaxPreProcessing];
     uint32_t numEffects = AudioEffect::kMaxPreProcessing;
 
-    status_t status = AudioEffect::queryDefaultPreProcessing(audioSession,
+    status_t status = AudioEffect::queryDefaultPreProcessing((audio_session_t) audioSession,
                                            descriptors,
                                            &numEffects);
     if (status != NO_ERROR || numEffects == 0) {
@@ -888,7 +879,7 @@ android_media_AudioEffect_native_queryPreProcessings(JNIEnv *env, jclass clazz _
 // ----------------------------------------------------------------------------
 
 // Dalvik VM type signatures
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     {"native_init",          "()V",      (void *)android_media_AudioEffect_native_init},
     {"native_setup",         "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;II[I[Ljava/lang/Object;Ljava/lang/String;)I",
                                          (void *)android_media_AudioEffect_native_setup},

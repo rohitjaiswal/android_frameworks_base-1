@@ -17,8 +17,10 @@
 package android.os;
 
 import android.annotation.IntegerRes;
+import android.annotation.Nullable;
 import android.text.TextUtils;
 import android.util.ArrayMap;
+import android.util.ArraySet;
 import android.util.Log;
 import android.util.Size;
 import android.util.SizeF;
@@ -204,6 +206,7 @@ public final class Parcel {
     private static final Parcel[] sOwnedPool = new Parcel[POOL_SIZE];
     private static final Parcel[] sHolderPool = new Parcel[POOL_SIZE];
 
+    // Keep in sync with frameworks/native/libs/binder/PersistableBundle.cpp.
     private static final int VAL_NULL = -1;
     private static final int VAL_STRING = 0;
     private static final int VAL_INTEGER = 1;
@@ -704,6 +707,8 @@ public final class Parcel {
             writeInt(-1);
             return;
         }
+        // Keep the format of this Parcel in sync with writeToParcelInner() in
+        // frameworks/native/libs/binder/PersistableBundle.cpp.
         final int N = val.size();
         writeInt(N);
         if (DEBUG_ARRAY_MAP) {
@@ -728,6 +733,21 @@ public final class Parcel {
      */
     public void writeArrayMap(ArrayMap<String, Object> val) {
         writeArrayMapInternal(val);
+    }
+
+    /**
+     * Write an array set to the parcel.
+     *
+     * @param val The array set to write.
+     *
+     * @hide
+     */
+    public void writeArraySet(@Nullable ArraySet<? extends Object> val) {
+        final int size = (val != null) ? val.size() : -1;
+        writeInt(size);
+        for (int i = 0; i < size; i++) {
+            writeValue(val.valueAt(i));
+        }
     }
 
     /**
@@ -2730,6 +2750,26 @@ public final class Parcel {
             return;
         }
         readArrayMapInternal(outVal, N, loader);
+    }
+
+    /**
+     * Reads an array set.
+     *
+     * @param loader The class loader to use.
+     *
+     * @hide
+     */
+    public @Nullable ArraySet<? extends Object> readArraySet(ClassLoader loader) {
+        final int size = readInt();
+        if (size < 0) {
+            return null;
+        }
+        ArraySet<Object> result = new ArraySet<>(size);
+        for (int i = 0; i < size; i++) {
+            Object value = readValue(loader);
+            result.append(value);
+        }
+        return result;
     }
 
     private void readListInternal(List outVal, int N,

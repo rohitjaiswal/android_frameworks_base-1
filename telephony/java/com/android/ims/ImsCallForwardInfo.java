@@ -55,17 +55,18 @@ public class ImsCallForwardInfo implements Parcelable {
         out.writeInt(mCondition);
         out.writeInt(mStatus);
         out.writeInt(mToA);
-        out.writeInt(mServiceClass);
         out.writeString(mNumber);
         out.writeInt(mTimeSeconds);
+        out.writeInt(mServiceClass);
     }
 
     @Override
     public String toString() {
         return super.toString() + ", Condition: " + mCondition
             + ", Status: " + ((mStatus == 0) ? "disabled" : "enabled")
-            + ", ToA: " + mToA + ", Number=" + mNumber
+            + ", ToA: " + mToA
             + ", Service Class: " + mServiceClass
+            + ", Number=" + mNumber
             + ", Time (seconds): " + mTimeSeconds;
     }
 
@@ -73,9 +74,9 @@ public class ImsCallForwardInfo implements Parcelable {
         mCondition = in.readInt();
         mStatus = in.readInt();
         mToA = in.readInt();
-        mServiceClass = in.readInt();
         mNumber = in.readString();
         mTimeSeconds = in.readInt();
+        mServiceClass = in.readInt();
     }
 
     public static final Creator<ImsCallForwardInfo> CREATOR =

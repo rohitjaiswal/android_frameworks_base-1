@@ -19,15 +19,17 @@ package com.android.systemui.qs;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.drawable.Drawable;
+import android.telephony.TelephonyManager;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 
 import com.android.systemui.R;
 import com.android.systemui.qs.QSTile.SignalState;
 
 /** View that represents a custom quick settings tile for displaying signal info (wifi/cell). **/
-public final class SignalTileView extends QSTileView {
+public final class SignalTileView extends QSIconView {
     private static final long DEFAULT_DURATION = new ValueAnimator().getDuration();
     private static final long SHORT_DURATION = DEFAULT_DURATION / 3;
 
@@ -36,6 +38,7 @@ public final class SignalTileView extends QSTileView {
     private ImageView mOverlay;
     private ImageView mIn;
     private ImageView mOut;
+    private ImageView mRoaming;
 
     private int mWideOverlayIconStartPadding;
 
@@ -63,7 +66,23 @@ public final class SignalTileView extends QSTileView {
         mSignal = new ImageView(mContext);
         mIconFrame.addView(mSignal);
         mOverlay = new ImageView(mContext);
-        mIconFrame.addView(mOverlay, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        if (getContext().getResources().getBoolean(R.bool.show_roaming_and_network_icons)
+                || mStyle == STATUS_BAR_STYLE_EXTENDED) {
+            mRoaming = new ImageView(mContext);
+            mRoaming.setImageResource(R.drawable.ic_qs_signal_r);
+            mRoaming.setVisibility(View.GONE);
+            LinearLayout iconLayout = new LinearLayout(mContext);
+            if (getContext().getResources().getBoolean(R.bool.show_roaming_and_network_icons)) {
+                iconLayout.addView(mRoaming, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+                iconLayout.addView(mOverlay, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+            } else {
+                iconLayout.addView(mOverlay, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+                iconLayout.addView(mRoaming, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+            }
+            mIconFrame.addView(iconLayout, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        } else {
+            mIconFrame.addView(mOverlay, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        }
         return mIconFrame;
     }
 
@@ -81,6 +100,11 @@ public final class SignalTileView extends QSTileView {
         super.onLayout(changed, l, t, r, b);
         layoutIndicator(mIn);
         layoutIndicator(mOut);
+    }
+
+    @Override
+    protected int getIconMeasureMode() {
+        return MeasureSpec.AT_MOST;
     }
 
     private void layoutIndicator(View indicator) {
@@ -101,8 +125,7 @@ public final class SignalTileView extends QSTileView {
     }
 
     @Override
-    protected void handleStateChanged(QSTile.State state) {
-        super.handleStateChanged(state);
+    public void setIcon(QSTile.State state) {
         final SignalState s = (SignalState) state;
         setIcon(mSignal, s);
         if (s.overlayIconId > 0) {
@@ -123,6 +146,14 @@ public final class SignalTileView extends QSTileView {
         final boolean shown = isShown();
         setVisibility(mIn, shown, s.activityIn);
         setVisibility(mOut, shown, s.activityOut);
+        if ((mRoaming != null)
+                && getContext().getResources().getBoolean(R.bool.show_roaming_and_network_icons)
+                        || mStyle == STATUS_BAR_STYLE_EXTENDED) {
+            TelephonyManager tm =
+                    (TelephonyManager) mContext.getSystemService(Context.TELEPHONY_SERVICE);
+            mRoaming.setVisibility(
+                    tm.isNetworkRoaming(s.subId) && s.isShowRoaming ? View.VISIBLE : View.GONE);
+         }
     }
 
     private void setVisibility(View view, boolean shown, boolean visible) {

@@ -19,7 +19,6 @@ package android.media;
 import android.net.NetworkUtils;
 import android.os.IBinder;
 import android.os.StrictMode;
-import android.os.SystemProperties;
 import android.util.Log;
 
 import java.io.BufferedInputStream;
@@ -35,13 +34,7 @@ import java.net.NoRouteToHostException;
 import java.net.ProtocolException;
 import java.net.UnknownServiceException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-
-import java.net.InetSocketAddress;
-import java.net.Proxy;
-import java.net.Socket;
-import java.net.SocketAddress;
 
 import static android.media.MediaPlayer.MEDIA_ERROR_UNSUPPORTED;
 
@@ -55,14 +48,10 @@ public class MediaHTTPConnection extends IMediaHTTPConnection.Stub {
 
     private long mCurrentOffset = -1;
     private URL mURL = null;
-    private int mProxyPort = 0;
-    private String mProxyIP;
     private Map<String, String> mHeaders = null;
     private HttpURLConnection mConnection = null;
     private long mTotalSize = -1;
     private InputStream mInputStream = null;
-    private List<String> mCookies = null;
-    private boolean mIsCookieUpdated = false;
 
     private boolean mAllowCrossDomainRedirect = true;
     private boolean mAllowCrossProtocolRedirect = true;
@@ -108,21 +97,10 @@ public class MediaHTTPConnection extends IMediaHTTPConnection.Stub {
 
     /* returns true iff header is internal */
     private boolean filterOutInternalHeaders(String key, String val) {
-        Log.d(TAG, "filterOutInternalHeaders: key=" + key + ", val=" + val);
         if ("android-allow-cross-domain-redirect".equalsIgnoreCase(key)) {
             mAllowCrossDomainRedirect = parseBoolean(val);
             // cross-protocol redirects are also controlled by this flag
             mAllowCrossProtocolRedirect = mAllowCrossDomainRedirect;
-        } else if ("use-proxy".equalsIgnoreCase(key)) {
-            Log.d(TAG, "filterOutInternalHeaders use-proxy " + val);
-            int colonPos = val.indexOf(":");
-            if (colonPos > 0) {
-                mProxyIP = new String((val.substring(0, colonPos)).trim());
-                mProxyPort = Integer.parseInt(val.substring(colonPos + 1));
-                Log.d(TAG, "sta-proxy-ip " + mProxyIP + " port " + mProxyPort);
-            }
-        } else if ("Cookie".equalsIgnoreCase(key) && mIsCookieUpdated) {
-            Log.d(TAG, "filterOutInternalHeaders: Cookie");
         } else {
             return false;
         }
@@ -202,19 +180,10 @@ public class MediaHTTPConnection extends IMediaHTTPConnection.Stub {
             boolean noProxy = isLocalHost(url);
 
             while (true) {
-
-                Log.d(TAG, "proxy " + mProxyIP  +" port "+ mProxyPort);
-                if (mProxyPort > 0) {
-                    SocketAddress socketAddr = new InetSocketAddress(mProxyIP, mProxyPort);
-                    java.net.Proxy proxy = new java.net.Proxy(java.net.Proxy.Type.HTTP, socketAddr);
-                    mConnection = (HttpURLConnection) url.openConnection(proxy);
-                    Log.d(TAG, "connection initialized with proxy");
+                if (noProxy) {
+                    mConnection = (HttpURLConnection)url.openConnection(Proxy.NO_PROXY);
                 } else {
-                    if (noProxy) {
-                        mConnection = (HttpURLConnection)url.openConnection(Proxy.NO_PROXY);
-                    } else {
-                        mConnection = (HttpURLConnection)url.openConnection();
-                    }
+                    mConnection = (HttpURLConnection)url.openConnection();
                 }
                 mConnection.setConnectTimeout(CONNECT_TIMEOUT_MS);
 
@@ -225,14 +194,6 @@ public class MediaHTTPConnection extends IMediaHTTPConnection.Stub {
                     for (Map.Entry<String, String> entry : mHeaders.entrySet()) {
                         mConnection.setRequestProperty(
                                 entry.getKey(), entry.getValue());
-                    }
-                }
-
-                if (mIsCookieUpdated) {
-                    if (VERBOSE)
-                        Log.d(TAG, "add Cookie in the request");
-                    for (String cookie : mCookies) {
-                        mConnection.addRequestProperty("Cookie", cookie.split(";", 2)[0]);
                     }
                 }
 
@@ -322,16 +283,6 @@ public class MediaHTTPConnection extends IMediaHTTPConnection.Stub {
                 throw new IOException();
             } else {
                 mTotalSize = mConnection.getContentLength();
-                if (mConnection.getHeaderFields().containsKey("Set-Cookie")) {
-                    mIsCookieUpdated = SystemProperties.getBoolean(
-                            "persist.media.cookie.cust", false);
-                    mCookies = mConnection.getHeaderFields().get("Set-Cookie");
-                    if (VERBOSE) {
-                        for (String cookie : mCookies) {
-                            Log.d(TAG, "get Cookie" + cookie);
-                        }
-                    }
-                 }
             }
 
             if (offset > 0 && response != HttpURLConnection.HTTP_PARTIAL) {

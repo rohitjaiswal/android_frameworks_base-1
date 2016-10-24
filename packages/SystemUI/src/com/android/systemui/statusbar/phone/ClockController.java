@@ -1,82 +1,62 @@
 package com.android.systemui.statusbar.phone;
 
-import com.android.systemui.FontSizeUtils;
-
-import android.content.ContentResolver;
 import android.content.Context;
-import android.database.ContentObserver;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.os.Handler;
-import android.os.UserHandle;
+import android.util.Log;
 import android.view.View;
-import com.android.systemui.R;
-import com.android.systemui.cm.UserContentObserver;
-import com.android.systemui.statusbar.policy.Clock;
 
-import cyanogenmod.providers.CMSettings;
+import com.android.systemui.FontSizeUtils;
+import com.android.systemui.R;
+import com.android.systemui.statusbar.policy.Clock;
+import com.android.systemui.tuner.TunerService;
+
+import static com.android.systemui.statusbar.policy.Clock.AM_PM_STYLE_GONE;
+import static com.android.systemui.statusbar.policy.Clock.CLOCK_SECONDS;
 
 /**
  * To control your...clock
  */
-public class ClockController {
+public class ClockController implements TunerService.Tunable {
 
-    public static final int STYLE_HIDE_CLOCK    = 0;
-    public static final int STYLE_CLOCK_RIGHT   = 1;
-    public static final int STYLE_CLOCK_CENTER  = 2;
-    public static final int STYLE_CLOCK_LEFT    = 3;
+    private static final String TAG = "ClockController";
 
-    private final IconMerger mNotificationIcons;
+    public static final int STYLE_CLOCK_RIGHT = 1;
+    public static final int STYLE_CLOCK_CENTER = 2;
+    public static final int STYLE_CLOCK_LEFT = 3;
+
+    public static final String CLOCK_POSITION = "cmsystem:status_bar_clock";
+    public static final String CLOCK_STYLE = "cmsystem:status_bar_am_pm";
+
+    private final NotificationIconAreaController mNotificationIconAreaController;
     private final Context mContext;
-    private final SettingsObserver mSettingsObserver;
-    private Clock mRightClock, mCenterClock, mLeftClock, mActiveClock;
+    private Clock mRightClock, mLeftClock;
+    public static Clock mCenterClock, mActiveClock;
 
-    private int mClockLocation;
-    private int mAmPmStyle;
+    private int mAmPmStyle = AM_PM_STYLE_GONE;
+    private int mClockPosition = STYLE_CLOCK_RIGHT;
+    private boolean mClockVisible = true;
+    private boolean mShowSeconds = false;
+
     private int mIconTint = Color.WHITE;
 
-    class SettingsObserver extends UserContentObserver {
-        SettingsObserver(Handler handler) {
-            super(handler);
-        }
-
-        @Override
-        protected void observe() {
-            super.observe();
-            ContentResolver resolver = mContext.getContentResolver();
-            resolver.registerContentObserver(CMSettings.System.getUriFor(
-                    CMSettings.System.STATUS_BAR_AM_PM), false, this, UserHandle.USER_ALL);
-            resolver.registerContentObserver(CMSettings.System.getUriFor(
-                    CMSettings.System.STATUS_BAR_CLOCK), false, this, UserHandle.USER_ALL);
-            updateSettings();
-        }
-
-        @Override
-        protected void unobserve() {
-            super.unobserve();
-            mContext.getContentResolver().unregisterContentObserver(this);
-        }
-
-        @Override
-        public void update() {
-            updateSettings();
-        }
-    }
-
-    public ClockController(View statusBar, IconMerger notificationIcons, Handler handler) {
+    public ClockController(View statusBar,
+            NotificationIconAreaController notificationIconAreaController, Handler handler) {
         mRightClock = (Clock) statusBar.findViewById(R.id.clock);
         mCenterClock = (Clock) statusBar.findViewById(R.id.center_clock);
         mLeftClock = (Clock) statusBar.findViewById(R.id.left_clock);
-        mNotificationIcons = notificationIcons;
+        mNotificationIconAreaController = notificationIconAreaController;
         mContext = statusBar.getContext();
 
         mActiveClock = mRightClock;
-        mSettingsObserver = new SettingsObserver(handler);
-        mSettingsObserver.observe();
+
+        TunerService.get(mContext).addTunable(this, CLOCK_POSITION, CLOCK_STYLE, CLOCK_SECONDS);
     }
 
     private Clock getClockForCurrentLocation() {
         Clock clockForAlignment;
-        switch (mClockLocation) {
+        switch (mClockPosition) {
             case STYLE_CLOCK_CENTER:
                 clockForAlignment = mCenterClock;
                 break;
@@ -84,7 +64,6 @@ public class ClockController {
                 clockForAlignment = mLeftClock;
                 break;
             case STYLE_CLOCK_RIGHT:
-            case STYLE_HIDE_CLOCK:
             default:
                 clockForAlignment = mRightClock;
                 break;
@@ -94,33 +73,37 @@ public class ClockController {
 
     private void updateActiveClock() {
         mActiveClock.setVisibility(View.GONE);
-        if (mClockLocation == STYLE_HIDE_CLOCK) {
+        if (!mClockVisible) {
             return;
         }
 
         mActiveClock = getClockForCurrentLocation();
         mActiveClock.setVisibility(View.VISIBLE);
         mActiveClock.setAmPmStyle(mAmPmStyle);
+        mActiveClock.setShowSeconds(mShowSeconds);
 
         setClockAndDateStatus();
         setTextColor(mIconTint);
         updateFontSize();
     }
 
-    private void updateSettings() {
-        ContentResolver resolver = mContext.getContentResolver();
-        mAmPmStyle = CMSettings.System.getIntForUser(resolver,
-                CMSettings.System.STATUS_BAR_AM_PM, Clock.AM_PM_STYLE_GONE,
-                UserHandle.USER_CURRENT);
-        mClockLocation = CMSettings.System.getIntForUser(
-                resolver, CMSettings.System.STATUS_BAR_CLOCK, STYLE_CLOCK_RIGHT,
-                UserHandle.USER_CURRENT);
+    @Override
+    public void onTuningChanged(String key, String newValue) {
+        Log.d(TAG, "onTuningChanged key=" + key + " value=" + newValue);
+
+        if (CLOCK_POSITION.equals(key)) {
+            mClockPosition = newValue == null ? STYLE_CLOCK_RIGHT : Integer.valueOf(newValue);
+        } else if (CLOCK_STYLE.equals(key)) {
+            mAmPmStyle = newValue == null ? AM_PM_STYLE_GONE : Integer.valueOf(newValue);
+        } else if (CLOCK_SECONDS.equals(mShowSeconds)) {
+            mShowSeconds = newValue == null ? false : Boolean.valueOf(newValue);
+        }
         updateActiveClock();
     }
 
     private void setClockAndDateStatus() {
-        if (mNotificationIcons != null) {
-            mNotificationIcons.setClockAndDateStatus(mClockLocation);
+        if (mNotificationIconAreaController != null) {
+            mNotificationIconAreaController.setClockAndDateStatus(mClockPosition);
         }
     }
 
@@ -128,6 +111,7 @@ public class ClockController {
         if (mActiveClock != null) {
             mActiveClock.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
+        mClockVisible = visible;
     }
 
     public void setTextColor(int iconTint) {
@@ -137,13 +121,21 @@ public class ClockController {
         }
     }
 
+    public void setTextColor(Rect tintArea, int iconTint) {
+        if (mActiveClock != null) {
+            setTextColor(StatusBarIconController.getTint(tintArea, mActiveClock, iconTint));
+        }
+    }
+
     public void updateFontSize() {
         if (mActiveClock != null) {
             FontSizeUtils.updateFontSize(mActiveClock, R.dimen.status_bar_clock_size);
         }
     }
 
-    public void cleanup() {
-        mSettingsObserver.unobserve();
+    public void setPaddingRelative(int start, int top, int end, int bottom) {
+        if (mActiveClock != null) {
+            mActiveClock.setPaddingRelative(start, top, end, bottom);
+        }
     }
 }

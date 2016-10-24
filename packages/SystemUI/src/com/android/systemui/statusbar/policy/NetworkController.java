@@ -19,7 +19,7 @@ package com.android.systemui.statusbar.policy;
 import android.content.Context;
 import android.content.Intent;
 import android.telephony.SubscriptionInfo;
-
+import com.android.settingslib.net.DataUsageController;
 import com.android.settingslib.wifi.AccessPoint;
 
 import java.util.List;
@@ -27,20 +27,29 @@ import java.util.List;
 public interface NetworkController {
 
     boolean hasMobileDataFeature();
+    boolean isAdvancedDataTileEnabled();
     void addSignalCallback(SignalCallback cb);
     void removeSignalCallback(SignalCallback cb);
     void setWifiEnabled(boolean enabled);
     void onUserSwitched(int newUserId);
     AccessPointController getAccessPointController();
-    MobileDataController getMobileDataController();
+    DataUsageController getMobileDataController();
+    DataSaverController getDataSaverController();
+
+    boolean hasVoiceCallingFeature();
+
+    void addEmergencyListener(EmergencyListener listener);
+    void removeEmergencyListener(EmergencyListener listener);
 
     public interface SignalCallback {
         void setWifiIndicators(boolean enabled, IconState statusIcon, IconState qsIcon,
                 boolean activityIn, boolean activityOut, String description);
 
         void setMobileDataIndicators(IconState statusIcon, IconState qsIcon, int statusType,
-                int qsType, boolean activityIn, boolean activityOut, String typeContentDescription,
-                String description, boolean isWide, boolean showSeparateRoaming, int subId);
+                int qsType, boolean activityIn, boolean activityOut, int dataActivityId,
+                int mobileActivityId, int stackedDataIcon, int stackedVoiceIcon,
+                String typeContentDescription, String description,
+                boolean isWide, int subId);
         void setSubs(List<SubscriptionInfo> subs);
         void setNoSims(boolean show);
 
@@ -49,6 +58,19 @@ public interface NetworkController {
         void setIsAirplaneMode(IconState icon);
 
         void setMobileDataEnabled(boolean enabled);
+    }
+
+    public interface SignalCallbackExtended extends SignalCallback {
+        void setMobileDataIndicators(IconState statusIcon, IconState qsIcon, int statusType,
+                int qsType, boolean activityIn, boolean activityOut, int dataActivityId,
+                int mobileActivityId, int stackedDataIcon, int stackedVoiceIcon,
+                String typeContentDescription, String description, boolean isWide,
+                int subId, int dataNetworkTypeInRoamingId, int embmsIconId,
+                int imsIconId, boolean isImsOverWifi);
+    }
+
+    public interface EmergencyListener {
+        void setEmergencyCallsOnly(boolean emergencyOnly);
     }
 
     public static class IconState {
@@ -82,25 +104,7 @@ public interface NetworkController {
 
         public interface AccessPointCallback {
             void onAccessPointsChanged(List<AccessPoint> accessPoints);
-            void onSettingsActivityTriggered(Intent intent);
-        }
-    }
-
-    /**
-     * Tracks mobile data support and usage.
-     */
-    public interface MobileDataController {
-        boolean isMobileDataSupported();
-        boolean isMobileDataEnabled();
-        void setMobileDataEnabled(boolean enabled);
-        DataUsageInfo getDataUsageInfo();
-
-        public static class DataUsageInfo {
-            public String carrier;
-            public String period;
-            public long limitLevel;
-            public long warningLevel;
-            public long usageLevel;
+            void onSettingsActivityTriggered(Intent settingsIntent);
         }
     }
 }

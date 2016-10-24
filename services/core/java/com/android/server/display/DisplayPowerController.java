@@ -17,24 +17,14 @@
 package com.android.server.display;
 
 import com.android.internal.app.IBatteryStats;
-import com.android.internal.policy.IKeyguardService;
-import com.android.server.policy.keyguard.KeyguardServiceWrapper;
 import com.android.server.LocalServices;
 import com.android.server.am.BatteryStatsService;
 import com.android.server.lights.LightsManager;
 
 import android.animation.Animator;
 import android.animation.ObjectAnimator;
-import android.content.ComponentName;
-import android.content.ContentResolver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.ServiceConnection;
 import android.content.res.Resources;
-import android.graphics.Bitmap;
-import android.graphics.Point;
-import android.graphics.Rect;
-import android.database.ContentObserver;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -42,23 +32,17 @@ import android.hardware.SensorManager;
 import android.hardware.display.DisplayManagerInternal.DisplayPowerCallbacks;
 import android.hardware.display.DisplayManagerInternal.DisplayPowerRequest;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
 import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.Trace;
-import android.os.UserHandle;
-import android.provider.Settings;
 import android.util.MathUtils;
 import android.util.Slog;
 import android.util.Spline;
 import android.util.TimeUtils;
 import android.view.Display;
-import android.view.Surface;
-import android.view.SurfaceControl;
-import android.view.WindowManager;
 import android.view.WindowManagerPolicy;
 
 import java.io.PrintWriter;
@@ -120,7 +104,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
     private static final float TYPICAL_PROXIMITY_THRESHOLD = 5.0f;
 
     // Brightness animation ramp rate in brightness units per second.
-    private static final int BRIGHTNESS_RAMP_RATE_FAST = 200;
     private static final int BRIGHTNESS_RAMP_RATE_SLOW = 40;
 
     private static final int REPORTED_TO_POLICY_SCREEN_OFF = 0;
@@ -157,7 +140,7 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
     private Sensor mProximitySensor;
 
     // The doze screen brightness.
-    private int mScreenBrightnessDozeConfig;
+    private final int mScreenBrightnessDozeConfig;
 
     // The dim screen brightness.
     private final int mScreenBrightnessDimConfig;
@@ -264,6 +247,9 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
     private boolean mAppliedDimming;
     private boolean mAppliedLowPower;
 
+    // Brightness ramp rate fast.
+    private final int mBrightnessRampRateFast;
+
     // The controller for the automatic brightness level.
     private AutomaticBrightnessController mAutomaticBrightnessController;
 
@@ -271,26 +257,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
     private ObjectAnimator mColorFadeOnAnimator;
     private ObjectAnimator mColorFadeOffAnimator;
     private RampAnimator<DisplayPowerState> mScreenBrightnessRampAnimator;
-
-    private float mDozeBrightnessScale = -0.01f;
-    private final int mDozeBrightnessDefault;
-    private final int mMaxBrightness;
-
-    public static final String KEYGUARD_PACKAGE = "com.android.systemui";
-    public static final String KEYGUARD_CLASS = "com.android.systemui.keyguard.KeyguardService";
-    private KeyguardServiceWrapper mKeyguardService;
-    private final ServiceConnection mKeyguardConnection = new ServiceConnection() {
-        @Override
-        public void onServiceConnected(ComponentName name, IBinder service) {
-            mKeyguardService = new KeyguardServiceWrapper(mContext,
-                    IKeyguardService.Stub.asInterface(service));
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName name) {
-            mKeyguardService = null;
-        }
-    };
 
     /**
      * Creates the display power controller.
@@ -312,17 +278,8 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         final int screenBrightnessSettingMinimum = clampAbsoluteBrightness(resources.getInteger(
                 com.android.internal.R.integer.config_screenBrightnessSettingMinimum));
 
-        // Settings observer
-        SettingsObserver observer = new SettingsObserver(mHandler);
-        observer.observe();
-
-        mDozeBrightnessDefault = resources.getInteger(
-                com.android.internal.R.integer.config_screenBrightnessDoze);
-        mMaxBrightness = resources.getInteger(
-                com.android.internal.R.integer.config_screenBrightnessSettingMaximum);
-        mScreenBrightnessDozeConfig = clampAbsoluteBrightness(
-                (mDozeBrightnessScale == -0.01f) ? mDozeBrightnessDefault
-                : (int) (mDozeBrightnessScale * mMaxBrightness));
+        mScreenBrightnessDozeConfig = clampAbsoluteBrightness(resources.getInteger(
+                com.android.internal.R.integer.config_screenBrightnessDoze));
 
         mScreenBrightnessDimConfig = clampAbsoluteBrightness(resources.getInteger(
                 com.android.internal.R.integer.config_screenBrightnessDim));
@@ -353,6 +310,9 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         mAllowAutoBrightnessWhileDozingConfig = resources.getBoolean(
                 com.android.internal.R.bool.config_allowAutoBrightnessWhileDozing);
 
+        mBrightnessRampRateFast = resources.getInteger(
+                com.android.internal.R.integer.config_brightness_ramp_rate_fast);
+
         int lightSensorRate = resources.getInteger(
                 com.android.internal.R.integer.config_autoBrightnessLightSensorRate);
         long brighteningLightDebounce = resources.getInteger(
@@ -365,6 +325,9 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                 com.android.internal.R.bool.config_autoBrightnessResetAmbientLuxAfterWarmUp);
         int ambientLightHorizon = resources.getInteger(
                 com.android.internal.R.integer.config_autoBrightnessAmbientLightHorizon);
+        float autoBrightnessAdjustmentMaxGamma = resources.getFraction(
+                com.android.internal.R.fraction.config_autoBrightnessAdjustmentMaxGamma,
+                1, 1);
 
         if (mUseSoftwareAutoBrightnessConfig) {
             int[] lux = resources.getIntArray(
@@ -397,13 +360,13 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                 if (bottom < screenBrightnessRangeMinimum) {
                     screenBrightnessRangeMinimum = bottom;
                 }
-                mAutomaticBrightnessController = new AutomaticBrightnessController(mContext, this,
+                mAutomaticBrightnessController = new AutomaticBrightnessController(this,
                         handler.getLooper(), sensorManager, screenAutoBrightnessSpline,
                         lightSensorWarmUpTimeConfig, screenBrightnessRangeMinimum,
                         mScreenBrightnessRangeMaximum, dozeScaleFactor, lightSensorRate,
                         brighteningLightDebounce, brighteningLightFastDebounce,
                         darkeningLightDebounce, autoBrightnessResetAmbientLuxAfterWarmUp,
-                        ambientLightHorizon);
+                        ambientLightHorizon, autoBrightnessAdjustmentMaxGamma);
             }
         }
 
@@ -419,52 +382,8 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                         TYPICAL_PROXIMITY_THRESHOLD);
             }
         }
-		
-        Intent intent = new Intent();
-        intent.setClassName(KEYGUARD_PACKAGE,
-                KEYGUARD_CLASS);
-        mContext.bindServiceAsUser(intent, mKeyguardConnection,
-                Context.BIND_AUTO_CREATE, UserHandle.OWNER);
 
     }
-        /**
-         * Settingsobserver to take care of the user settings.
-         */
-        private class SettingsObserver extends ContentObserver {
-            SettingsObserver(Handler handler) {
-                super(handler);
-            }
-
-            void observe() {
-                ContentResolver resolver = mContext.getContentResolver();
-                resolver.registerContentObserver(Settings.System.getUriFor(
-                        Settings.System.DOZE_BRIGHTNESS),
-                        false, this, UserHandle.USER_ALL);
-                update();
-            }
-
-            @Override
-            public void onChange(boolean selfChange) {
-                super.onChange(selfChange);
-                update();
-            }
-
-            public void update() {
-                ContentResolver resolver = mContext.getContentResolver();
-
-                // Get doze brightness
-                mDozeBrightnessScale = Settings.System.getFloatForUser(resolver,
-                        Settings.System.DOZE_BRIGHTNESS,
-                        -0.01f, UserHandle.USER_CURRENT);
-                // do not allow zero brightness
-                if (mDozeBrightnessScale == 0.0f) {
-                    mDozeBrightnessScale = 0.005f;
-                }
-                mScreenBrightnessDozeConfig = clampAbsoluteBrightness(
-                        (mDozeBrightnessScale == -0.01f) ? mDozeBrightnessDefault
-                        : (int) (mDozeBrightnessScale * mMaxBrightness));
-            }
-        }
 
     /**
      * Returns true if the proximity sensor screen-off function is available.
@@ -516,29 +435,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             }
 
             if (changed && !mPendingRequestChangedLocked) {
-                if ((mKeyguardService != null && !mKeyguardService.isShowing())
-                        && request.policy == DisplayPowerRequest.POLICY_OFF) {
-                    boolean seeThrough = Settings.System.getBoolean(mContext.getContentResolver(),
-                            Settings.System.LOCKSCREEN_SEE_THROUGH, false);
-                    Bitmap bmp = null;
-                    if (seeThrough) {
-                        WindowManager wm = (WindowManager)
-                                mContext.getSystemService(Context.WINDOW_SERVICE);
-                        Display display = wm.getDefaultDisplay();
-                        Point point = new Point();
-                        display.getRealSize(point);
-                        int rotation = display.getRotation();
-                        if (rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270) {
-                            point.set(point.y, point.x);
-                        }
-
-                        /* Limit max screenshot capture layer to 22000.
-                           Prevents status bar and navigation bar from being captured. */
-                        bmp = SurfaceControl.screenshot(new Rect(),
-                                point.x, point.y, 0, 22000, false, Surface.ROTATION_0);
-                    }
-                    mKeyguardService.setBackgroundBitmap(bmp);
-                }
                 mPendingRequestChangedLocked = true;
                 sendUpdatePowerStateLocked();
             }
@@ -695,7 +591,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             } else {
                 setProximitySensorEnabled(false);
                 mWaitingForNegativeProximity = false;
-                mProximity = PROXIMITY_UNKNOWN;
             }
             if (mScreenOffBecauseOfProximity
                     && mProximity != PROXIMITY_POSITIVE) {
@@ -740,7 +635,7 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                     && mPowerRequest.brightnessSetByUser;
             mAutomaticBrightnessController.configure(autoBrightnessEnabled,
                     mPowerRequest.screenAutoBrightnessAdjustment, state != Display.STATE_ON,
-                    userInitiatedChange);
+                    userInitiatedChange, mPowerRequest.useTwilight);
         }
 
         // Apply brightness boost.
@@ -798,6 +693,9 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                 slowChange = false;
             }
             mAppliedDimming = true;
+        } else if (mAppliedDimming) {
+            slowChange = false;
+            mAppliedDimming = false;
         }
 
         // If low power mode is enabled, cut the brightness level by half
@@ -810,6 +708,9 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                 slowChange = false;
             }
             mAppliedLowPower = true;
+        } else if (mAppliedLowPower) {
+            slowChange = false;
+            mAppliedLowPower = false;
         }
 
         // Animate the screen brightness when the screen is on or dozing.
@@ -817,7 +718,7 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         if (!mPendingScreenOff) {
             if (state == Display.STATE_ON || state == Display.STATE_DOZE) {
                 animateScreenBrightness(brightness,
-                        slowChange ? BRIGHTNESS_RAMP_RATE_SLOW : BRIGHTNESS_RAMP_RATE_FAST);
+                        slowChange ? BRIGHTNESS_RAMP_RATE_SLOW : mBrightnessRampRateFast);
             } else {
                 animateScreenBrightness(brightness, 0);
             }
@@ -959,7 +860,11 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         // If there is already an animation in progress, don't interfere with it.
         if (mColorFadeOnAnimator.isStarted()
                 || mColorFadeOffAnimator.isStarted()) {
-            return;
+            if (target != Display.STATE_ON) {
+                return;
+            }
+            // If display state changed to on, proceed and stop the color fade and turn screen on.
+            mPendingScreenOff = false;
         }
 
         // If we were in the process of turning off the screen but didn't quite
@@ -1261,6 +1166,7 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         if (mAutomaticBrightnessController != null) {
             mAutomaticBrightnessController.dump(pw);
         }
+
     }
 
     private static String proximityToString(int state) {
@@ -1291,14 +1197,7 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
 
     private static Spline createAutoBrightnessSpline(int[] lux, int[] brightness) {
         try {
-            int n = brightness.length;
-            final int m = lux.length;
-            if (n == 0 || m == 0) {
-              return null;
-            }
-            if (m < n) {
-              n = m;
-            }
+            final int n = brightness.length;
             float[] x = new float[n];
             float[] y = new float[n];
             y[0] = normalizeAbsoluteBrightness(brightness[0]);
@@ -1317,9 +1216,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             return spline;
         } catch (IllegalArgumentException ex) {
             Slog.e(TAG, "Could not create auto-brightness spline.", ex);
-            return null;
-        } catch (ArrayIndexOutOfBoundsException ex) {
-            Slog.e(TAG, "Could not create auto-brightness spline (index fault).", ex);
             return null;
         }
     }

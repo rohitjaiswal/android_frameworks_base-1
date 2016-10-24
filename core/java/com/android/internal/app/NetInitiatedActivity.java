@@ -40,7 +40,7 @@ public class NetInitiatedActivity extends AlertActivity implements DialogInterfa
 
     private static final String TAG = "NetInitiatedActivity";
 
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
     private static final boolean VERBOSE = false;
 
     private static final int POSITIVE_BUTTON = AlertDialog.BUTTON_POSITIVE;
@@ -133,7 +133,7 @@ public class NetInitiatedActivity extends AlertActivity implements DialogInterfa
         notificationId = -1;
     }
 
-    // Respond to NI Handler under GpsLocationProvider, 1 = accept, 2 = deny
+    // Respond to NI Handler under GnssLocationProvider, 1 = accept, 2 = deny
     private void sendUserResponse(int response) {
         if (DEBUG) Log.d(TAG, "sendUserResponse, response: " + response);
         LocationManager locationManager = (LocationManager)

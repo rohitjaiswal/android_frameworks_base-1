@@ -1,5 +1,5 @@
 /*
- *Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  *Redistribution and use in source and binary forms, with or without
  *modification, are permitted provided that the following conditions are
@@ -31,6 +31,9 @@ package com.android.server;
 
 import dalvik.system.PathClassLoader;
 
+import java.io.File;
+import java.lang.reflect.Constructor;
+
 import android.util.Slog;
 import android.net.Network;
 import android.net.NetworkStats;
@@ -40,77 +43,120 @@ public class NetPluginDelegate {
 
     private static final String TAG = "ConnectivityExtension";
     private static final boolean LOGV = false;
-    private static final boolean LOGW = false;
 
     private static Class tetherExtensionClass = null;
     private static Object tetherExtensionObj = null;
 
-    private static boolean extensionFailed;
-
     public static void getTetherStats(NetworkStats uidStats, NetworkStats devStats,
             NetworkStats xtStats) {
-        if (!loadTetherExtJar()) {
-            return;
-        }
+        if (LOGV) Slog.v(TAG, "getTetherStats() E");
+        if(!loadTetherExtJar()) return;
         try {
             tetherExtensionClass.getMethod("getTetherStats", NetworkStats.class,
                     NetworkStats.class, NetworkStats.class).invoke(tetherExtensionObj, uidStats,
                     devStats, xtStats);
         } catch (Exception e) {
-            if (LOGW) {
-                e.printStackTrace();
-                Log.w(TAG, "error in invoke method");
-            }
+            e.printStackTrace();
+            Log.w(TAG, "error in invoke method");
         }
         if (LOGV) Slog.v(TAG, "getTetherStats() X");
     }
 
-    public static void setQuota(String iface, long quota) {
-        if (!loadTetherExtJar()) {
-            return;
+    public static NetworkStats peekTetherStats() {
+        if (LOGV) Slog.v(TAG, "peekTetherStats() E");
+        NetworkStats ret_val = null;
+        if(!loadTetherExtJar()) return ret_val;
+        try {
+            ret_val = (NetworkStats) tetherExtensionClass.getMethod("peekTetherStats")
+                    .invoke(tetherExtensionObj);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.w(TAG, "error in invoke method");
         }
+        if (LOGV) Slog.v(TAG, "peekTetherStats() X");
+        return ret_val;
+    }
+
+    public static void natStarted(String intIface, String extIface) {
+        if (LOGV) Slog.v(TAG, "natStarted() E");
+        if(!loadTetherExtJar()) return;
+        try {
+            tetherExtensionClass.getMethod("natStarted", String.class, String.class).invoke(
+                    tetherExtensionObj, intIface, extIface);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.w(TAG, "Error calling natStarted Method on extension jar");
+        }
+        if (LOGV) Slog.v(TAG, "natStarted() X");
+    }
+
+    public static void natStopped(String intIface, String extIface) {
+        if (LOGV) Slog.v(TAG, "natStopped() E");
+        if(!loadTetherExtJar()) return;
+        try {
+            tetherExtensionClass.getMethod("natStopped", String.class, String.class).invoke(
+                    tetherExtensionObj, intIface, extIface);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.w(TAG, "Error calling natStopped Method on extension jar");
+        }
+        if (LOGV) Slog.v(TAG, "natStopped() X");
+    }
+
+    public static void setQuota(String iface, long quota) {
+        if (LOGV) Slog.v(TAG, "setQuota(" + iface + ", " + quota + ") E");
+        if(!loadTetherExtJar()) return;
         try {
             tetherExtensionClass.getMethod("setQuota", String.class, long.class).invoke(
                     tetherExtensionObj, iface, quota);
-        } catch (Exception ex) {
-            if (LOGW) Log.w(TAG, "Error calling setQuota Method on extension jar");
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.w(TAG, "Error calling setQuota Method on extension jar");
         }
         if (LOGV) Slog.v(TAG, "setQuota(" + iface + ", " + quota + ") X");
     }
 
     public static void setUpstream(Network net) {
         if (LOGV) Slog.v(TAG, "setUpstream(" + net + ") E");
-        loadTetherExtJar();
+        if(!loadTetherExtJar()) return;
         try {
             tetherExtensionClass.getMethod("setUpstream", Network.class).invoke(
                     tetherExtensionObj, net);
-        } catch (Exception ex) {
-            if (LOGW) Log.w(TAG, "Error calling setUpstream Method on extension jar");
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.w(TAG, "Error calling setUpstream Method on extension jar");
         }
-        if (LOGV) Slog.v(TAG, "setUpstream(" + net + ") E");
+        if (LOGV) Slog.v(TAG, "setUpstream(" + net + ") X");
     }
 
 
     private static boolean loadTetherExtJar() {
         final String realProvider = "com.qualcomm.qti.tetherstatsextension.TetherStatsReporting";
         final String realProviderPath = "/system/framework/ConnectivityExt.jar";
-        if (!extensionFailed && tetherExtensionClass == null && tetherExtensionObj == null) {
+        if (tetherExtensionClass != null && tetherExtensionObj != null) {
+            return true;
+        }
+        boolean pathExists = new File(realProviderPath).exists();
+        if (!pathExists) {
+            Log.w(TAG, "ConnectivityExt jar file not present");
+            return false;
+        }
+
+        if (tetherExtensionClass == null && tetherExtensionObj == null) {
             if (LOGV) Slog.v(TAG, "loading ConnectivityExt jar");
             try {
-
                 PathClassLoader classLoader = new PathClassLoader(realProviderPath,
                         ClassLoader.getSystemClassLoader());
 
                 tetherExtensionClass = classLoader.loadClass(realProvider);
                 tetherExtensionObj = tetherExtensionClass.newInstance();
-                if (LOGV)
-                    Slog.v(TAG, "ConnectivityExt jar loaded");
-                extensionFailed = false;
+                if (LOGV) Slog.v(TAG, "ConnectivityExt jar loaded");
             } catch (Exception e) {
-                if (LOGW) Log.w(TAG, "Connectivity extension is not available");
-                extensionFailed = true;
+                e.printStackTrace();
+                Log.w(TAG, "unable to load ConnectivityExt jar");
+                return false;
             }
         }
-        return !extensionFailed;
+        return true;
     }
 }

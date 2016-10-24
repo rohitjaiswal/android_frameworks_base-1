@@ -50,7 +50,6 @@ static void usage(const char* pname)
             "usage: %s [-hp] [-d display-id] [FILENAME]\n"
             "   -h: this message\n"
             "   -p: save the file as a png.\n"
-            "   -j: save the file as a jpeg.\n"
             "   -d: specify the display id to capture, default %d.\n"
             "If FILENAME ends with .png it will be saved as a png.\n"
             "If FILENAME is not given, the results will be printed to stdout.\n",
@@ -66,30 +65,6 @@ static SkColorType flinger2skia(PixelFormat f)
         default:
             return kN32_SkColorType;
     }
-}
-
-static status_t vinfoToPixelFormat(const fb_var_screeninfo& vinfo,
-        uint32_t* bytespp, uint32_t* f)
-{
-
-    switch (vinfo.bits_per_pixel) {
-        case 16:
-            *f = PIXEL_FORMAT_RGB_565;
-            *bytespp = 2;
-            break;
-        case 24:
-            *f = PIXEL_FORMAT_RGB_888;
-            *bytespp = 3;
-            break;
-        case 32:
-            // TODO: do better decoding of vinfo here
-            *f = PIXEL_FORMAT_RGBX_8888;
-            *bytespp = 4;
-            break;
-        default:
-            return BAD_VALUE;
-    }
-    return NO_ERROR;
 }
 
 static status_t notifyMediaScanner(const char* fileName) {
@@ -113,16 +88,12 @@ int main(int argc, char** argv)
 
     const char* pname = argv[0];
     bool png = false;
-    bool jpeg = false;
     int32_t displayId = DEFAULT_DISPLAY_ID;
     int c;
-    while ((c = getopt(argc, argv, "pjhd:")) != -1) {
+    while ((c = getopt(argc, argv, "phd:")) != -1) {
         switch (c) {
             case 'p':
                 png = true;
-                break;
-            case 'j':
-                jpeg = true;
                 break;
             case 'd':
                 displayId = atoi(optarg);
@@ -148,17 +119,11 @@ int main(int argc, char** argv)
             return 1;
         }
         const int len = strlen(fn);
-        if (len >= 4) {
-            if (0 == strcmp(fn+len-4, ".png")) {
-                png = true;
-            } else if (0 == strcmp(fn+len-4, ".jpg")) {
-                jpeg = true;
-            } else if (len > 4 && 0 == strcmp(fn+len-5, ".jpeg")) {
-                jpeg = true;
-            }
+        if (len >= 4 && 0 == strcmp(fn+len-4, ".png")) {
+            png = true;
         }
     }
-    
+
     if (fd == -1) {
         usage(pname);
         return 1;
@@ -206,37 +171,14 @@ int main(int argc, char** argv)
         s = screenshot.getStride();
         f = screenshot.getFormat();
         size = screenshot.getSize();
-    } else {
-        const char* fbpath = "/dev/graphics/fb0";
-        int fb = open(fbpath, O_RDONLY);
-        if (fb >= 0) {
-            struct fb_var_screeninfo vinfo;
-            if (ioctl(fb, FBIOGET_VSCREENINFO, &vinfo) == 0) {
-                uint32_t bytespp;
-                if (vinfoToPixelFormat(vinfo, &bytespp, &f) == NO_ERROR) {
-                    size_t offset = (vinfo.xoffset + vinfo.yoffset*vinfo.xres) * bytespp;
-                    w = vinfo.xres;
-                    h = vinfo.yres;
-                    s = vinfo.xres;
-                    size = w*h*bytespp;
-                    mapsize = offset + size;
-                    mapbase = mmap(0, mapsize, PROT_READ, MAP_PRIVATE, fb, 0);
-                    if (mapbase != MAP_FAILED) {
-                        base = (void const *)((char const *)mapbase + offset);
-                    }
-                }
-            }
-            close(fb);
-        }
     }
 
     if (base != NULL) {
-        if (png || jpeg) {
+        if (png) {
             const SkImageInfo info = SkImageInfo::Make(w, h, flinger2skia(f),
                                                        kPremul_SkAlphaType);
             SkAutoTUnref<SkData> data(SkImageEncoder::EncodeData(info, base, s*bytesPerPixel(f),
-                    (png ? SkImageEncoder::kPNG_Type : SkImageEncoder::kJPEG_Type),
-                    SkImageEncoder::kDefaultQuality));
+                    SkImageEncoder::kPNG_Type, SkImageEncoder::kDefaultQuality));
             if (data.get()) {
                 write(fd, data->data(), data->size());
             }

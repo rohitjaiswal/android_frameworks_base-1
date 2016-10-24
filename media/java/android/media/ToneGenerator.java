@@ -728,6 +728,7 @@ public class ToneGenerator
      * @see #ToneGenerator(int, int)
      */
     public static final int TONE_CDMA_SIGNAL_OFF = 98;
+
     /**
      * HOLD_RECALL - 440Hz
      *
@@ -739,6 +740,7 @@ public class ToneGenerator
     public static final int MAX_VOLUME = 100;
     /** Minimum volume setting, for use with {@link #ToneGenerator(int,int)} */
     public static final int MIN_VOLUME = 0;
+
 
     /**
      * ToneGenerator class contructor specifying output stream type and volume.

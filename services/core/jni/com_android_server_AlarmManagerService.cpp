@@ -502,8 +502,8 @@ static void android_server_AlarmManagerService_set(JNIEnv*, jobject, jlong nativ
     }
 }
 
-static void android_server_AlarmManagerService_clear(JNIEnv*, jobject, jlong nativeData, jint type,
-jlong seconds, jlong nanoseconds)
+static void android_server_AlarmManagerService_clear(JNIEnv*, jobject, jlong nativeData, jint type, jlong seconds,
+        jlong nanoseconds)
 {
     AlarmImpl *impl = reinterpret_cast<AlarmImpl *>(nativeData);
     struct timespec ts;
@@ -518,6 +518,7 @@ jlong seconds, jlong nanoseconds)
               static_cast<long long>(nanoseconds), strerror(errno));
     }
 }
+
 
 static jint android_server_AlarmManagerService_waitForAlarm(JNIEnv*, jobject, jlong nativeData)
 {
@@ -538,7 +539,7 @@ static jint android_server_AlarmManagerService_waitForAlarm(JNIEnv*, jobject, jl
     return result;
 }
 
-static JNINativeMethod sMethods[] = {
+static const JNINativeMethod sMethods[] = {
      /* name, signature, funcPtr */
     {"init", "()J", (void*)android_server_AlarmManagerService_init},
     {"close", "(J)V", (void*)android_server_AlarmManagerService_close},

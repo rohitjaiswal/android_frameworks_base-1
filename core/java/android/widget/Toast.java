@@ -168,6 +168,7 @@ public class Toast {
      */
     public void setDuration(@Duration int duration) {
         mDuration = duration;
+        mTN.mDuration = duration;
     }
 
     /**
@@ -347,7 +348,7 @@ public class Toast {
         };
 
         private final WindowManager.LayoutParams mParams = new WindowManager.LayoutParams();
-        final Handler mHandler = new Handler();    
+        final Handler mHandler = new Handler();
 
         int mGravity;
         int mX, mY;
@@ -357,8 +358,12 @@ public class Toast {
 
         View mView;
         View mNextView;
+        int mDuration;
 
         WindowManager mWM;
+
+        static final long SHORT_DURATION_TIMEOUT = 5000;
+        static final long LONG_DURATION_TIMEOUT = 1000;
 
         TN() {
             // XXX This should be changed to use a Dialog, with a Theme.Toast
@@ -493,6 +498,8 @@ public class Toast {
                 mParams.verticalMargin = mVerticalMargin;
                 mParams.horizontalMargin = mHorizontalMargin;
                 mParams.packageName = packageName;
+                mParams.removeTimeoutMilliseconds = mDuration ==
+                    Toast.LENGTH_LONG ? LONG_DURATION_TIMEOUT : SHORT_DURATION_TIMEOUT;
                 if (mView.getParent() != null) {
                     if (localLOGV) Log.v(TAG, "REMOVE! " + mView + " in " + this);
                     mWM.removeView(mView);

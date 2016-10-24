@@ -21,21 +21,28 @@
 LOCAL_PATH:= $(call my-dir)
 
 testFiles := \
+    AppAsLib_test.cpp \
     AttributeFinder_test.cpp \
     ByteBucketArray_test.cpp \
     Config_test.cpp \
     ConfigLocale_test.cpp \
-    PackageIdOverride_test.cpp \
+    Idmap_test.cpp \
     ResTable_test.cpp \
     Split_test.cpp \
     TestHelpers.cpp \
     Theme_test.cpp \
-    ThemesBags_test.cpp \
-    ThemesIdmap_test.cpp \
     TypeWrappers_test.cpp \
     ZipUtils_test.cpp
 
+androidfw_test_cflags := \
+    -Wall \
+    -Werror \
+    -Wunused \
+    -Wunreachable-code \
+    -Wno-missing-field-initializers \
 
+# gtest is broken.
+androidfw_test_cflags += -Wno-unnamed-type-template-args
 
 # ==========================================================
 # Build the host tests: libandroidfw_tests
@@ -43,7 +50,7 @@ testFiles := \
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libandroidfw_tests
-
+LOCAL_CFLAGS := $(androidfw_test_cflags)
 LOCAL_SRC_FILES := $(testFiles)
 LOCAL_STATIC_LIBRARIES := \
     libandroidfw \
@@ -61,6 +68,7 @@ ifneq ($(SDK_ONLY),true)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libandroidfw_tests
+LOCAL_CFLAGS := $(androidfw_test_cflags)
 LOCAL_SRC_FILES := $(testFiles) \
     BackupData_test.cpp \
     ObbFile_test.cpp \

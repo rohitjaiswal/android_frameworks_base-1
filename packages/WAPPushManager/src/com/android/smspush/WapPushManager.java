@@ -185,6 +185,7 @@ public class WapPushManager extends Service {
             WapPushManDBHelper dbh = getDatabase(mContext);
             SQLiteDatabase db = dbh.getReadableDatabase();
             WapPushManDBHelper.queryData lastapp = dbh.queryLastApp(db, app_id, content_type);
+            db.close();
 
             if (lastapp == null) {
                 Log.w(LOG_TAG, "no receiver app found for " + app_id + ":" + content_type);
@@ -283,6 +284,7 @@ public class WapPushManager extends Service {
                 ret = true;
             }
 
+            db.close();
 
             return ret;
         }
@@ -306,6 +308,7 @@ public class WapPushManager extends Service {
             WapPushManDBHelper.queryData lastapp = dbh.queryLastApp(db, x_app_id, content_type);
 
             if (lastapp == null) {
+                db.close();
                 return false;
             }
 
@@ -325,6 +328,7 @@ public class WapPushManager extends Service {
                     + package_name + "." + class_name
                     + ", sq:" + lastapp.installOrder);
 
+            db.close();
 
             return num > 0;
         }
@@ -342,6 +346,7 @@ public class WapPushManager extends Service {
                     + " and class_name=\'" + class_name + "\'";
             int num_removed = db.delete(APPID_TABLE_NAME, where, null);
 
+            db.close();
             if (LOCAL_LOGV) Log.v(LOG_TAG, "deleted " + num_removed + " rows:"
                     + x_app_id + ":" + content_type + " "
                     + package_name + "." + class_name);
@@ -394,6 +399,7 @@ public class WapPushManager extends Service {
         if (LOCAL_LOGV) Log.v(LOG_TAG, "verifyData app id: " + x_app_id + " content type: " +
                 content_type + " lastapp: " + lastapp);
 
+        db.close();
 
         if (lastapp == null) return false;
 
@@ -424,6 +430,7 @@ public class WapPushManager extends Service {
         SQLiteDatabase db = dbh.getReadableDatabase();
         boolean ret = dbh.queryLastApp(db, x_app_id, content_type) != null;
 
+        db.close();
         return ret;
     }
 

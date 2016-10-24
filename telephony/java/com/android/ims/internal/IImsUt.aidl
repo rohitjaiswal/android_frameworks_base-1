@@ -113,7 +113,7 @@ interface IImsUt {
     void setListener(in IImsUtListener listener);
 
     /**
-     * Retrieves the configuration of the call forward for specified service class.
-     */
+      * Retrieves the configuration of the call forward for specified service class.
+      */
     int queryCFForServiceClass(int condition, String number, int serviceClass);
 }

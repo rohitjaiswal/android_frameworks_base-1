@@ -42,12 +42,6 @@
         <item>systemui_reboot</item>
      </string-array>
 
-    <!-- List of packages that should not be themed.
-         Note: These strings are checked using String.startsWith() so include as much of the
-         package name as possible to avoid other packages being un-themed unintentionally -->
-    <string-array name="non_themeable_packages" translatable="false">
-    </string-array>
-
     <!-- Do not translate. App ops request strings -->
     <string-array name="app_ops_labels" translatable="false">
         <!-- OP_COARSE_LOCATION -->
@@ -176,7 +170,9 @@
         <item>@string/app_ops_turn_on_screen</item>
         <!-- OP_GET_ACCOUNTS -->
         <item>@string/app_ops_get_accounts</item>
-        <!-- OP_WIFI_CHANGE -->
+        <!-- OP_RUN_IN_BACKGROUND -->
+        <item>@string/app_ops_run_in_background</item>
+        <!-- OP_CHANGE_WIFI_STATE -->
         <item>@string/app_ops_wifi_change</item>
         <!-- OP_BLUETOOTH_CHANGE -->
         <item>@string/app_ops_toggle_bluetooth</item>

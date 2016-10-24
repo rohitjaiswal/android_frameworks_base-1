@@ -18,7 +18,6 @@ package com.android.server.dreams;
 
 import static android.Manifest.permission.BIND_DREAM_SERVICE;
 
-import android.view.WindowManagerPolicy;
 import com.android.internal.util.DumpUtils;
 import com.android.server.FgThread;
 import com.android.server.SystemService;
@@ -85,7 +84,6 @@ public final class DreamManagerService extends SystemService {
     private boolean mCurrentDreamIsWaking;
     private int mCurrentDreamDozeScreenState = Display.STATE_UNKNOWN;
     private int mCurrentDreamDozeScreenBrightness = PowerManager.BRIGHTNESS_DEFAULT;
-    private int mLidState = WindowManagerPolicy.WindowManagerFuncs.LID_ABSENT;
 
     public DreamManagerService(Context context) {
         super(context);
@@ -227,8 +225,7 @@ public final class DreamManagerService extends SystemService {
         }
 
         synchronized (mLock) {
-            if (mCurrentDreamToken == token && mCurrentDreamCanDoze
-                    && mLidState != WindowManagerPolicy.WindowManagerFuncs.LID_CLOSED) {
+            if (mCurrentDreamToken == token && mCurrentDreamCanDoze) {
                 mCurrentDreamDozeScreenState = screenState;
                 mCurrentDreamDozeScreenBrightness = screenBrightness;
                 mPowerManagerInternal.setDozeOverrideFromDreamManager(
@@ -238,43 +235,6 @@ public final class DreamManagerService extends SystemService {
                     mDozeWakeLock.acquire();
                 }
             }
-        }
-    }
-
-    private int getLidStateInternal() {
-        return mLidState;
-    }
-
-    private void setLidStateInternal(int state) {
-        synchronized (mLock) {
-            if (mLidState == state) {
-                return;
-            }
-            mLidState = state;
-        }
-        switch (state) {
-            case WindowManagerPolicy.WindowManagerFuncs.LID_ABSENT:
-                // do nothing
-                break;
-            case WindowManagerPolicy.WindowManagerFuncs.LID_OPEN:
-                synchronized (mLock) {
-                    mPowerManagerInternal.setDozeOverrideFromDreamManager(
-                            Display.STATE_UNKNOWN, PowerManager.BRIGHTNESS_DEFAULT);
-                }
-                break;
-            case WindowManagerPolicy.WindowManagerFuncs.LID_CLOSED:
-                // mimicing logic from stopDozingInternal(), stop any thing when the lid is closed.
-                synchronized (mLock) {
-                    if (mCurrentDreamIsDozing) {
-                        mCurrentDreamIsDozing = false;
-                        if (mDozeWakeLock.isHeld()) {
-                            mDozeWakeLock.release();
-                        }
-                        mPowerManagerInternal.setDozeOverrideFromDreamManager(
-                                Display.STATE_OFF, PowerManager.BRIGHTNESS_OFF);
-                    }
-                }
-                break;
         }
     }
 
@@ -381,7 +341,8 @@ public final class DreamManagerService extends SystemService {
 
     private ServiceInfo getServiceInfo(ComponentName name) {
         try {
-            return name != null ? mContext.getPackageManager().getServiceInfo(name, 0) : null;
+            return name != null ? mContext.getPackageManager().getServiceInfo(name,
+                    PackageManager.MATCH_DEBUG_TRIAGED_MISSING) : null;
         } catch (NameNotFoundException e) {
             return null;
         }
@@ -675,30 +636,6 @@ public final class DreamManagerService extends SystemService {
             final long ident = Binder.clearCallingIdentity();
             try {
                 stopDozingInternal(token);
-            } finally {
-                Binder.restoreCallingIdentity(ident);
-            }
-        }
-
-        @Override
-        public void setLidState(int lidState) {
-            checkPermission(android.Manifest.permission.WRITE_DREAM_STATE);
-
-            final long ident = Binder.clearCallingIdentity();
-            try {
-                setLidStateInternal(lidState);
-            } finally {
-                Binder.restoreCallingIdentity(ident);
-            }
-        }
-
-        @Override
-        public int getLidState() {
-            checkPermission(Manifest.permission.READ_DREAM_STATE);
-
-            final long ident = Binder.clearCallingIdentity();
-            try {
-                return getLidStateInternal();
             } finally {
                 Binder.restoreCallingIdentity(ident);
             }

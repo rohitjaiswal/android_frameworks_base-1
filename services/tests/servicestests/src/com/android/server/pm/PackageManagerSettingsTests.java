@@ -21,34 +21,26 @@ import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
 
+import android.annotation.NonNull;
 import android.content.Context;
 import android.content.pm.PackageParser;
-import android.content.res.AssetManager;
-import android.content.res.Configuration;
-import android.content.res.Resources;
-import android.os.SystemProperties;
+import android.content.pm.UserInfo;
 import android.os.UserHandle;
 import android.test.AndroidTestCase;
-import android.test.mock.MockContext;
-import android.text.TextUtils;
 import android.util.ArrayMap;
 import android.util.ArraySet;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.LongSparseArray;
 
 import com.android.internal.os.AtomicFile;
 
 import java.lang.reflect.Constructor;
-
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import com.android.internal.R;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.security.PublicKey;
+import java.util.ArrayList;
+import java.util.List;
 
 public class PackageManagerSettingsTests extends AndroidTestCase {
     private static final String PACKAGE_NAME_2 = "com.google.app2";
@@ -57,6 +49,12 @@ public class PackageManagerSettingsTests extends AndroidTestCase {
     private static final boolean localLOGV = true;
     public static final String TAG = "PackageManagerSettingsTests";
     protected final String PREFIX = "android.content.pm";
+
+    private @NonNull List<UserInfo> createFakeUsers() {
+        ArrayList<UserInfo> users = new ArrayList<>();
+        users.add(new UserInfo(UserHandle.USER_SYSTEM, "test user", UserInfo.FLAG_INITIALIZED));
+        return users;
+    }
 
     private void writeFile(File file, byte[] data) {
         file.mkdirs();
@@ -173,12 +171,6 @@ public class PackageManagerSettingsTests extends AndroidTestCase {
         folder.delete();
     }
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
-        System.setProperty("dexmaker.dexcache", getContext().getCacheDir().toString());
-    }
-
     private void writeOldFiles() {
         deleteSystemFolder();
         writePackagesXml();
@@ -264,7 +256,7 @@ public class PackageManagerSettingsTests extends AndroidTestCase {
         writeOldFiles();
         createUserManagerServiceRef();
         Settings settings = new Settings(getContext().getFilesDir(), new Object());
-        assertEquals(true, settings.readLPw(null, null, 0, false, null));
+        assertEquals(true, settings.readLPw(createFakeUsers()));
         verifyKeySetMetaData(settings);
     }
 
@@ -276,11 +268,11 @@ public class PackageManagerSettingsTests extends AndroidTestCase {
         writeOldFiles();
         createUserManagerServiceRef();
         Settings settings = new Settings(getContext().getFilesDir(), new Object());
-        assertEquals(true, settings.readLPw(null, null, 0, false, null));
+        assertEquals(true, settings.readLPw(createFakeUsers()));
 
         /* write out, read back in and verify the same */
         settings.writeLPr();
-        assertEquals(true, settings.readLPw(null, null, 0, false, null));
+        assertEquals(true, settings.readLPw(createFakeUsers()));
         verifyKeySetMetaData(settings);
     }
 
@@ -288,7 +280,7 @@ public class PackageManagerSettingsTests extends AndroidTestCase {
         // Write the package files and make sure they're parsed properly the first time
         writeOldFiles();
         Settings settings = new Settings(getContext().getFilesDir(), new Object());
-        assertEquals(true, settings.readLPw(null, null, 0, false, null));
+        assertEquals(true, settings.readLPw(createFakeUsers()));
         assertNotNull(settings.peekPackageLPr(PACKAGE_NAME_3));
         assertNotNull(settings.peekPackageLPr(PACKAGE_NAME_1));
 
@@ -308,12 +300,12 @@ public class PackageManagerSettingsTests extends AndroidTestCase {
         writeOldFiles();
         createUserManagerServiceRef();
         Settings settings = new Settings(getContext().getFilesDir(), new Object());
-        assertEquals(true, settings.readLPw(null, null, 0, false, null));
+        assertEquals(true, settings.readLPw(createFakeUsers()));
         settings.writeLPr();
 
         // Create Settings again to make it read from the new files
         settings = new Settings(getContext().getFilesDir(), new Object());
-        assertEquals(true, settings.readLPw(null, null, 0, false, null));
+        assertEquals(true, settings.readLPw(createFakeUsers()));
 
         PackageSetting ps = settings.peekPackageLPr(PACKAGE_NAME_2);
         assertEquals(COMPONENT_ENABLED_STATE_DISABLED_USER, ps.getEnabled(0));
@@ -324,7 +316,7 @@ public class PackageManagerSettingsTests extends AndroidTestCase {
         // Write the package files and make sure they're parsed properly the first time
         writeOldFiles();
         Settings settings = new Settings(getContext().getFilesDir(), new Object());
-        assertEquals(true, settings.readLPw(null, null, 0, false, null));
+        assertEquals(true, settings.readLPw(createFakeUsers()));
 
         // Enable/Disable a package
         PackageSetting ps = settings.peekPackageLPr(PACKAGE_NAME_1);
@@ -353,102 +345,5 @@ public class PackageManagerSettingsTests extends AndroidTestCase {
         assertEquals(1, ps.getEnabledComponents(1).size());
         hasEnabled = ps.getEnabledComponents(0) != null && ps.getEnabledComponents(0).size() > 0;
         assertEquals(false, hasEnabled);
-    }
-
-    // Checks if a package that is locked to a different region is rejected
-    // from being installed
-     public void testPrebundledDifferentRegionReject() {
-        Settings settings = new Settings(getContext().getFilesDir());
-        String expectedPackageNeededForRegion = "org.cyanogenmod.restricted.package";
-        Resources resources = Mockito.mock(Resources.class);
-        String[] regionRestrictedPackages = new String[] {
-                expectedPackageNeededForRegion
-        };
-        Mockito.when(resources.getStringArray(R.array.config_restrict_to_region_locked_devices))
-                .thenReturn(regionRestrictedPackages);
-        assertFalse(settings.shouldPrebundledPackageBeInstalledForRegion(resources,
-                expectedPackageNeededForRegion, resources));
-    }
-
-    // Checks if a package that is locked to the current region is accepted
-    // This also covers the test for a package that needs to be installed on a
-    // non region locked device
-    public void testPrebundledMatchingRegionAccept() {
-        Settings settings = new Settings(getContext().getFilesDir());
-        String expectedPackageNeededForRegion = "org.cyanogenmod.restricted.package";
-        Resources resources = Mockito.mock(Resources.class);
-        String[] regionLockedPackages = new String[] {
-                expectedPackageNeededForRegion
-        };
-        Mockito.when(resources.getStringArray(R.array.config_region_locked_packages))
-                .thenReturn(regionLockedPackages);
-
-        Mockito.when(resources.getStringArray(R.array.config_restrict_to_region_locked_devices))
-                .thenReturn(regionLockedPackages);
-        assertTrue(settings.shouldPrebundledPackageBeInstalledForRegion(resources,
-                expectedPackageNeededForRegion, resources));
-    }
-
-    // Shamelessly kanged from KeySetManagerServiceTest
-    public PackageSetting generateFakePackageSetting(String name) {
-        return new PackageSetting(name, name, new File(mContext.getCacheDir(), "fakeCodePath"),
-                new File(mContext.getCacheDir(), "fakeResPath"), "", "", "",
-                "", 1, 0, 0);
-    }
-
-    // Checks if a package that was installed and currently isn't installed for the owner
-    // is accepted for a secondary user
-    public void testPrebundledSecondaryUserAccept() {
-        Settings settings = new Settings(getContext().getFilesDir());
-        String expectedPackageToBeInstalled = "org.cyanogenmod.secondaryuser.package";
-
-        PackageSetting packageSetting =
-                generateFakePackageSetting(expectedPackageToBeInstalled);
-
-        int userOwner = UserHandle.USER_OWNER;
-        int userSecondary = 1000;
-
-        // Return true that the package was installed for the owner at some point
-        settings.markPrebundledPackageInstalledLPr(userOwner, expectedPackageToBeInstalled);
-        assertTrue(settings.wasPrebundledPackageInstalledLPr(userOwner,
-                expectedPackageToBeInstalled));
-
-        // Return false that the package was installed for the secondary user at some point
-        // DON'T MARK PREBUNDLED PACKAGE INSTALLED
-
-        // Return false that the package is currently not installed for the owner
-        packageSetting.setInstalled(false, userOwner);
-        assertFalse(packageSetting.getInstalled(userOwner));
-
-        // Return false that the package is currently not installed for the secondary user
-        packageSetting.setInstalled(false, userSecondary);
-        assertFalse(packageSetting.getInstalled(userSecondary));
-
-        assertFalse(settings.shouldPrebundledPackageBeInstalledForUserLPr(packageSetting,
-                userSecondary, expectedPackageToBeInstalled));
-    }
-
-    // Checks if a package that was installed for a secondary user and currently isn't installed
-    // for the user is accepted to be reinstalled
-    public void testPrebundledSecondaryUserReinstallAccept() {
-        Settings settings = new Settings(getContext().getFilesDir());
-        String expectedPackageToBeInstalled = "org.cyanogenmod.secondaryuser.package";
-
-        PackageSetting packageSetting =
-                generateFakePackageSetting(expectedPackageToBeInstalled);
-
-        int userSecondary = 1000;
-
-        // Return true that the package was installed for the secondary user at some point
-        settings.markPrebundledPackageInstalledLPr(userSecondary, expectedPackageToBeInstalled);
-        assertTrue(settings.wasPrebundledPackageInstalledLPr(userSecondary,
-                expectedPackageToBeInstalled));
-
-        // Return false that the package is currently not installed for the secondary user
-        packageSetting.setInstalled(false, userSecondary);
-        assertFalse(packageSetting.getInstalled(userSecondary));
-
-        assertFalse(settings.shouldPrebundledPackageBeInstalledForUserLPr(packageSetting,
-                userSecondary, expectedPackageToBeInstalled));
     }
 }

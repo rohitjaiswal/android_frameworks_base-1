@@ -27,10 +27,9 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
 
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.systemui.qs.QSTile;
 import com.android.systemui.R;
-
-import org.cyanogenmod.internal.logging.CMMetricsLogger;
 
 /** Quick settings tile: Caffeine **/
 public class CaffeineTile extends QSTile<QSTile.BooleanState> {
@@ -57,7 +56,7 @@ public class CaffeineTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
-    protected BooleanState newTileState() {
+    public BooleanState newTileState() {
         return new BooleanState();
     }
 
@@ -113,6 +112,21 @@ public class CaffeineTile extends QSTile<QSTile.BooleanState> {
         refreshState();
     }
 
+    @Override
+    public Intent getLongClickIntent() {
+        return new Intent(Settings.ACTION_DISPLAY_SETTINGS);
+    }
+
+    @Override
+    public CharSequence getTileLabel() {
+        return mContext.getString(R.string.quick_settings_caffeine_label);
+    }
+
+    @Override
+    public int getMetricsCategory() {
+        return MetricsEvent.QUICK_SETTINGS;
+    }
+
     private void startCountDown(long duration) {
         stopCountDown();
         mSecondsRemaining = (int)duration;
@@ -156,7 +170,6 @@ public class CaffeineTile extends QSTile<QSTile.BooleanState> {
     @Override
     protected void handleUpdateState(BooleanState state, Object arg) {
         state.value = mWakeLock.isHeld();
-        state.visible = true;
         if (state.value) {
             state.label = formatValueWithRemainingTime();
             state.icon = ResourceIcon.get(R.drawable.ic_qs_caffeine_on);
@@ -168,11 +181,6 @@ public class CaffeineTile extends QSTile<QSTile.BooleanState> {
             state.contentDescription =  mContext.getString(
                     R.string.accessibility_quick_settings_caffeine_off);
         }
-    }
-
-    @Override
-    public int getMetricsCategory() {
-        return CMMetricsLogger.TILE_CAFFEINE;
     }
 
     private final class Receiver extends BroadcastReceiver {

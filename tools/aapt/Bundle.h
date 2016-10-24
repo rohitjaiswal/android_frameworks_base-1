@@ -1,6 +1,5 @@
 //
 // Copyright 2006 The Android Open Source Project
-// This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
 //
 // State bundle.  Used to pass around stuff like command-line args.
 //
@@ -56,7 +55,7 @@ public:
           mCompressionMethod(0), mJunkPath(false), mOutputAPKFile(NULL),
           mManifestPackageNameOverride(NULL), mInstrumentationPackageNameOverride(NULL),
           mAutoAddOverlay(false), mGenDependencies(false), mNoVersionVectors(false),
-          mCrunchedOutputDir(NULL), mProguardFile(NULL),
+          mCrunchedOutputDir(NULL), mProguardFile(NULL), mMainDexProguardFile(NULL),
           mAndroidManifestFile(NULL), mPublicOutputFile(NULL),
           mRClassDir(NULL), mResourceIntermediatesDir(NULL), mManifestMinSdkVersion(NULL),
           mMinSdkVersion(NULL), mTargetSdkVersion(NULL), mMaxSdkVersion(NULL),
@@ -66,9 +65,8 @@ public:
           mProduct(NULL), mUseCrunchCache(false), mErrorOnFailedInsert(false),
           mErrorOnMissingConfigEntry(false), mOutputTextSymbols(NULL),
           mSingleCrunchInputFile(NULL), mSingleCrunchOutputFile(NULL),
-          mOutputResourcesApkFile(NULL),
-          mInternalZipPath(NULL), mInputAPKFile(NULL),
           mBuildSharedLibrary(false),
+          mBuildAppAsSharedLibrary(false),
           mArgc(0), mArgv(NULL)
         {}
     ~Bundle(void) {}
@@ -114,10 +112,6 @@ public:
     void setJunkPath(bool val) { mJunkPath = val; }
     const char* getOutputAPKFile() const { return mOutputAPKFile; }
     void setOutputAPKFile(const char* val) { mOutputAPKFile = val; }
-    const char* getOutputResApk() { return mOutputResourcesApkFile; }
-    const char* getInputAPKFile() { return mInputAPKFile; }
-    void setInputAPKFile(const char* val) { mInputAPKFile = val; }
-    void setOutputResApk(const char* val) { mOutputResourcesApkFile = val; }
     const char* getManifestPackageNameOverride() const { return mManifestPackageNameOverride; }
     void setManifestPackageNameOverride(const char * val) { mManifestPackageNameOverride = val; }
     const char* getInstrumentationPackageNameOverride() const { return mInstrumentationPackageNameOverride; }
@@ -135,6 +129,12 @@ public:
     const android::String8& getPlatformBuildVersionName() { return mPlatformVersionName; }
     void setPlatformBuildVersionName(const android::String8& name) { mPlatformVersionName = name; }
 
+    const android::String8& getPrivateSymbolsPackage() const { return mPrivateSymbolsPackage; }
+
+    void setPrivateSymbolsPackage(const android::String8& package) {
+        mPrivateSymbolsPackage = package;
+    }
+
     bool getUTF16StringsOption() {
         return mWantUTF16 || !isMinSdkAtLeast(SDK_FROYO);
     }
@@ -148,6 +148,8 @@ public:
     void setCrunchedOutputDir(const char* dir) { mCrunchedOutputDir = dir; }
     const char* getProguardFile() const { return mProguardFile; }
     void setProguardFile(const char* file) { mProguardFile = file; }
+    const char* getMainDexProguardFile() const { return mMainDexProguardFile; }
+    void setMainDexProguardFile(const char* file) { mMainDexProguardFile = file; }
     const android::Vector<const char*>& getResourceSourceDirs() const { return mResourceSourceDirs; }
     void addResourceSourceDir(const char* dir) { mResourceSourceDirs.insertAt(dir,0); }
     const char* getAndroidManifestFile() const { return mAndroidManifestFile; }
@@ -213,10 +215,10 @@ public:
     void setSingleCrunchInputFile(const char* val) { mSingleCrunchInputFile = val; }
     const char* getSingleCrunchOutputFile() const { return mSingleCrunchOutputFile; }
     void setSingleCrunchOutputFile(const char* val) { mSingleCrunchOutputFile = val; }
-    void setInternalZipPath(const char* val) { mInternalZipPath = val; }
-    const char* getInternalZipPath() const { return mInternalZipPath; }
     bool getBuildSharedLibrary() const { return mBuildSharedLibrary; }
     void setBuildSharedLibrary(bool val) { mBuildSharedLibrary = val; }
+    bool getBuildAppAsSharedLibrary() const { return mBuildAppAsSharedLibrary; }
+    void setBuildAppAsSharedLibrary(bool val) { mBuildAppAsSharedLibrary = val; }
     void setNoVersionVectors(bool val) { mNoVersionVectors = val; }
     bool getNoVersionVectors() const { return mNoVersionVectors; }
 
@@ -251,7 +253,7 @@ public:
      * above. SDK levels that have a non-numeric identifier are assumed
      * to be newer than any SDK level that has a number designated.
      */
-    bool isMinSdkAtLeast(int desired) {
+    bool isMinSdkAtLeast(int desired) const {
         /* If the application specifies a minSdkVersion in the manifest
          * then use that. Otherwise, check what the user specified on
          * the command line. If neither, it's not available since
@@ -302,6 +304,7 @@ private:
     bool        mNoVersionVectors;
     const char* mCrunchedOutputDir;
     const char* mProguardFile;
+    const char* mMainDexProguardFile;
     const char* mAndroidManifestFile;
     const char* mPublicOutputFile;
     const char* mRClassDir;
@@ -338,12 +341,11 @@ private:
     const char* mOutputTextSymbols;
     const char* mSingleCrunchInputFile;
     const char* mSingleCrunchOutputFile;
-    const char* mOutputResourcesApkFile;
-    const char* mInternalZipPath;
-    const char* mInputAPKFile;
     bool        mBuildSharedLibrary;
+    bool        mBuildAppAsSharedLibrary;
     android::String8 mPlatformVersionCode;
     android::String8 mPlatformVersionName;
+    android::String8 mPrivateSymbolsPackage;
 
     /* file specification */
     int         mArgc;

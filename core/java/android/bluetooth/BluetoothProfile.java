@@ -131,10 +131,10 @@ public interface BluetoothProfile {
     public static final int HEADSET_CLIENT = 16;
 
     /**
-     * HID device
+     * PBAP Client
      * @hide
      */
-    public static final int HID_DEVICE = 17;
+    public static final int PBAP_CLIENT = 17;
 
     /**
      * DUN

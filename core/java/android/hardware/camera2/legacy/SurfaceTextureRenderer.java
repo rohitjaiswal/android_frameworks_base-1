@@ -401,6 +401,13 @@ public class SurfaceTextureRenderer {
 
     private void clearState() {
         mSurfaces.clear();
+        for (EGLSurfaceHolder holder : mConversionSurfaces) {
+            try {
+                LegacyCameraDevice.disconnectSurface(holder.surface);
+            } catch (LegacyExceptionUtils.BufferQueueAbandonedException e) {
+                Log.w(TAG, "Surface abandoned, skipping...", e);
+            }
+        }
         mConversionSurfaces.clear();
         mPBufferPixels = null;
         if (mSurfaceTexture != null) {
@@ -433,20 +440,6 @@ public class SurfaceTextureRenderer {
         EGL14.eglChooseConfig(mEGLDisplay, attribList, /*offset*/ 0, configs, /*offset*/ 0,
                 configs.length, numConfigs, /*offset*/ 0);
         checkEglError("eglCreateContext RGB888+recordable ES2");
-        if (numConfigs[0] == 0) {
-            Log.w(TAG, "eglChooseConfig returned no configs, retrying without EGL_RECORDABLE_ANDROID");
-            int[] attribList2 = {
-                    EGL14.EGL_RED_SIZE, EGL_COLOR_BITLENGTH,
-                    EGL14.EGL_GREEN_SIZE, EGL_COLOR_BITLENGTH,
-                    EGL14.EGL_BLUE_SIZE, EGL_COLOR_BITLENGTH,
-                    EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-                    EGL14.EGL_SURFACE_TYPE, EGL14.EGL_PBUFFER_BIT | EGL14.EGL_WINDOW_BIT,
-                    EGL14.EGL_NONE
-            };
-            EGL14.eglChooseConfig(mEGLDisplay, attribList2, /*offset*/ 0, configs, /*offset*/ 0,
-                    configs.length, numConfigs, /*offset*/ 0);
-            checkEglError("eglCreateContext RGB888 ES2");
-        }
         mConfigs = configs[0];
         int[] attrib_list = {
                 EGL14.EGL_CONTEXT_CLIENT_VERSION, GLES_VERSION,
@@ -532,9 +525,16 @@ public class SurfaceTextureRenderer {
         checkEglError("makeCurrent");
     }
 
-    private boolean swapBuffers(EGLSurface surface) {
+    private boolean swapBuffers(EGLSurface surface)
+            throws LegacyExceptionUtils.BufferQueueAbandonedException {
         boolean result = EGL14.eglSwapBuffers(mEGLDisplay, surface);
-        checkEglError("swapBuffers");
+        int error = EGL14.eglGetError();
+        if (error == EGL14.EGL_BAD_SURFACE) {
+            throw new LegacyExceptionUtils.BufferQueueAbandonedException();
+        } else if (error != EGL14.EGL_SUCCESS) {
+            throw new IllegalStateException("swapBuffers: EGL error: 0x" +
+                    Integer.toHexString(error));
+        }
         return result;
     }
 
@@ -645,6 +645,9 @@ public class SurfaceTextureRenderer {
                 holder.height = surfaceSize.getHeight();
                 if (LegacyCameraDevice.needsConversion(s)) {
                     mConversionSurfaces.add(holder);
+                    // LegacyCameraDevice is the producer of surfaces if it's not handled by EGL,
+                    // so LegacyCameraDevice needs to connect to the surfaces.
+                    LegacyCameraDevice.connectSurface(s);
                 } else {
                     mSurfaces.add(holder);
                 }
@@ -726,7 +729,14 @@ public class SurfaceTextureRenderer {
             addGlTimestamp(timestamp);
         }
 
-        List<Long> targetSurfaceIds = LegacyCameraDevice.getSurfaceIds(targetSurfaces);
+        List<Long> targetSurfaceIds = new ArrayList();
+        try {
+            targetSurfaceIds = LegacyCameraDevice.getSurfaceIds(targetSurfaces);
+        } catch (LegacyExceptionUtils.BufferQueueAbandonedException e) {
+            Log.w(TAG, "Surface abandoned, dropping frame. ", e);
+            request.setOutputAbandoned();
+        }
+
         for (EGLSurfaceHolder holder : mSurfaces) {
             if (LegacyCameraDevice.containsSurfaceId(holder.surface, targetSurfaceIds)) {
                 try{
@@ -741,6 +751,7 @@ public class SurfaceTextureRenderer {
                     swapBuffers(holder.eglSurface);
                 } catch (LegacyExceptionUtils.BufferQueueAbandonedException e) {
                     Log.w(TAG, "Surface abandoned, dropping frame. ", e);
+                    request.setOutputAbandoned();
                 }
             }
         }
@@ -765,6 +776,7 @@ public class SurfaceTextureRenderer {
                             holder.width, holder.height, format);
                 } catch (LegacyExceptionUtils.BufferQueueAbandonedException e) {
                     Log.w(TAG, "Surface abandoned, dropping frame. ", e);
+                    request.setOutputAbandoned();
                 }
             }
         }

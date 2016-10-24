@@ -16,11 +16,11 @@
 
 package com.android.server;
 
-import android.os.Looper;
 import com.android.internal.widget.LockPatternUtils;
 import com.android.internal.widget.LockPatternUtils.StrongAuthTracker;
 
 import android.app.trust.IStrongAuthTracker;
+import android.content.Context;
 import android.os.DeadObjectException;
 import android.os.Handler;
 import android.os.Message;
@@ -47,11 +47,10 @@ public class LockSettingsStrongAuth {
 
     private final ArrayList<IStrongAuthTracker> mStrongAuthTrackers = new ArrayList<>();
     private final SparseIntArray mStrongAuthForUser = new SparseIntArray();
+    private final int mDefaultStrongAuthFlags;
 
-    private final Handler mHandler;
-
-    public LockSettingsStrongAuth() {
-        mHandler = new Handler(Looper.getMainLooper(), mHandlerCallback);
+    public LockSettingsStrongAuth(Context context) {
+        mDefaultStrongAuthFlags = StrongAuthTracker.getDefaultFlags(context);
     }
 
     private void handleAddStrongAuthTracker(IStrongAuthTracker tracker) {
@@ -94,7 +93,7 @@ public class LockSettingsStrongAuth {
     }
 
     private void handleRequireStrongAuthOneUser(int strongAuthReason, int userId) {
-        int oldValue = mStrongAuthForUser.get(userId, LockPatternUtils.StrongAuthTracker.DEFAULT);
+        int oldValue = mStrongAuthForUser.get(userId, mDefaultStrongAuthFlags);
         int newValue = strongAuthReason == STRONG_AUTH_NOT_REQUIRED
                 ? STRONG_AUTH_NOT_REQUIRED
                 : (oldValue | strongAuthReason);
@@ -108,7 +107,7 @@ public class LockSettingsStrongAuth {
         int index = mStrongAuthForUser.indexOfKey(userId);
         if (index >= 0) {
             mStrongAuthForUser.removeAt(index);
-            notifyStrongAuthTrackers(StrongAuthTracker.DEFAULT, userId);
+            notifyStrongAuthTrackers(mDefaultStrongAuthFlags, userId);
         }
     }
 
@@ -139,7 +138,7 @@ public class LockSettingsStrongAuth {
     }
 
     public void requireStrongAuth(int strongAuthReason, int userId) {
-        if (userId == UserHandle.USER_ALL || userId >= UserHandle.USER_OWNER) {
+        if (userId == UserHandle.USER_ALL || userId >= UserHandle.USER_SYSTEM) {
             mHandler.obtainMessage(MSG_REQUIRE_STRONG_AUTH, strongAuthReason,
                     userId).sendToTarget();
         } else {
@@ -152,9 +151,9 @@ public class LockSettingsStrongAuth {
         requireStrongAuth(STRONG_AUTH_NOT_REQUIRED, userId);
     }
 
-    private final Handler.Callback mHandlerCallback = new Handler.Callback() {
+    private final Handler mHandler = new Handler() {
         @Override
-        public boolean handleMessage(Message msg) {
+        public void handleMessage(Message msg) {
             switch (msg.what) {
                 case MSG_REGISTER_TRACKER:
                     handleAddStrongAuthTracker((IStrongAuthTracker) msg.obj);
@@ -169,7 +168,6 @@ public class LockSettingsStrongAuth {
                     handleRemoveUser(msg.arg1);
                     break;
             }
-            return true;
         }
     };
 }

@@ -50,19 +50,22 @@ final class ProcessList {
 
     // OOM adjustments for processes in various states:
 
+    // Uninitialized value for any major or minor adj fields
+    static final int INVALID_ADJ = -10000;
+
     // Adjustment used in certain places where we don't know it yet.
     // (Generally this is something that is going to be cached, but we
     // don't know the exact value in the cached range to assign yet.)
-    static final int UNKNOWN_ADJ = 16;
+    static final int UNKNOWN_ADJ = 1001;
 
     // This is a process only hosting activities that are not visible,
     // so it can be killed without any disruption.
-    static final int CACHED_APP_MAX_ADJ = 15;
-    static final int CACHED_APP_MIN_ADJ = 9;
+    static final int CACHED_APP_MAX_ADJ = 906;
+    static final int CACHED_APP_MIN_ADJ = 900;
 
     // The B list of SERVICE_ADJ -- these are the old and decrepit
     // services that aren't as shiny and interesting as the ones in the A list.
-    static final int SERVICE_B_ADJ = 8;
+    static final int SERVICE_B_ADJ = 800;
 
     // This is the process of the previous application that the user was in.
     // This process is kept above other things, because it is very common to
@@ -70,34 +73,35 @@ final class ProcessList {
     // task switch (toggling between the two top recent apps) as well as normal
     // UI flow such as clicking on a URI in the e-mail app to view in the browser,
     // and then pressing back to return to e-mail.
-    static final int PREVIOUS_APP_ADJ = 7;
+    static final int PREVIOUS_APP_ADJ = 700;
 
     // This is a process holding the home application -- we want to try
     // avoiding killing it, even if it would normally be in the background,
     // because the user interacts with it so much.
-    static final int HOME_APP_ADJ = 6;
+    static final int HOME_APP_ADJ = 600;
 
     // This is a process holding an application service -- killing it will not
     // have much of an impact as far as the user is concerned.
-    static final int SERVICE_ADJ = 5;
+    static final int SERVICE_ADJ = 500;
 
     // This is a process with a heavy-weight application.  It is in the
     // background, but we want to try to avoid killing it.  Value set in
     // system/rootdir/init.rc on startup.
-    static final int HEAVY_WEIGHT_APP_ADJ = 4;
+    static final int HEAVY_WEIGHT_APP_ADJ = 400;
 
     // This is a process currently hosting a backup operation.  Killing it
     // is not entirely fatal but is generally a bad idea.
-    static final int BACKUP_APP_ADJ = 3;
+    static final int BACKUP_APP_ADJ = 300;
 
     // This is a process only hosting components that are perceptible to the
     // user, and we really want to avoid killing them, but they are not
     // immediately visible. An example is background music playback.
-    static final int PERCEPTIBLE_APP_ADJ = 2;
+    static final int PERCEPTIBLE_APP_ADJ = 200;
 
     // This is a process only hosting activities that are visible to the
     // user, so we'd prefer they don't disappear.
-    static final int VISIBLE_APP_ADJ = 1;
+    static final int VISIBLE_APP_ADJ = 100;
+    static final int VISIBLE_APP_LAYER_MAX = PERCEPTIBLE_APP_ADJ - VISIBLE_APP_ADJ - 1;
 
     // This is the process running the current foreground app.  We'd really
     // rather not kill it!
@@ -105,21 +109,28 @@ final class ProcessList {
 
     // This is a process that the system or a persistent process has bound to,
     // and indicated it is important.
-    static final int PERSISTENT_SERVICE_ADJ = -11;
+    static final int PERSISTENT_SERVICE_ADJ = -700;
 
     // This is a system persistent process, such as telephony.  Definitely
     // don't want to kill it, but doing so is not completely fatal.
-    static final int PERSISTENT_PROC_ADJ = -12;
+    static final int PERSISTENT_PROC_ADJ = -800;
 
     // The system process runs at the default adjustment.
-    static final int SYSTEM_ADJ = -16;
+    static final int SYSTEM_ADJ = -900;
 
     // Special code for native processes that are not being managed by the system (so
     // don't have an oom adj assigned by the system).
-    static final int NATIVE_ADJ = -17;
+    static final int NATIVE_ADJ = -1000;
 
     // Memory pages are 4K.
     static final int PAGE_SIZE = 4*1024;
+
+    // Activity manager's version of Process.THREAD_GROUP_BG_NONINTERACTIVE
+    static final int SCHED_GROUP_BACKGROUND = 0;
+    // Activity manager's version of Process.THREAD_GROUP_DEFAULT
+    static final int SCHED_GROUP_DEFAULT = 1;
+    // Activity manager's version of Process.THREAD_GROUP_TOP_APP
+    static final int SCHED_GROUP_TOP_APP = 2;
 
     // The minimum number of cached apps we want to be able to keep around,
     // without empty apps being able to push them out of memory.
@@ -135,8 +146,9 @@ final class ProcessList {
     // processes and the number of those processes does not count against the cached
     // process limit.
     static final int MAX_CACHED_APPS = SystemProperties.getInt("ro.sys.fw.bg_apps_limit",32);
+
     static final boolean USE_TRIM_SETTINGS =
-            SystemProperties.getBoolean("ro.sys.fw.use_trim_settings",false);
+            SystemProperties.getBoolean("ro.sys.fw.use_trim_settings",true);
     static final int EMPTY_APP_PERCENT = SystemProperties.getInt("ro.sys.fw.empty_app_percent",50);
     static final int TRIM_EMPTY_PERCENT =
             SystemProperties.getInt("ro.sys.fw.trim_empty_percent",100);
@@ -184,7 +196,7 @@ final class ProcessList {
     // These must be kept in sync with the definitions in lmkd.c
     //
     // LMK_TARGET <minfree> <minkillprio> ... (up to 6 pairs)
-    // LMK_PROCPRIO <pid> <prio>
+    // LMK_PROCPRIO <pid> <uid> <prio>
     // LMK_PROCREMOVE <pid>
     static final byte LMK_TARGET = 0;
     static final byte LMK_PROCPRIO = 1;
@@ -196,17 +208,6 @@ final class ProcessList {
     private final int[] mOomAdj = new int[] {
             FOREGROUND_APP_ADJ, VISIBLE_APP_ADJ, PERCEPTIBLE_APP_ADJ,
             BACKUP_APP_ADJ, CACHED_APP_MIN_ADJ, CACHED_APP_MAX_ADJ
-    };
-
-    // These are the low-end OOM level limits for 32bit 1 GB RAM
-    private final int[] mOomMinFreeLow32Bit = new int[] {
-            12288, 18432, 24576,
-            36864, 43008, 49152
-    };
-    // These are the high-end OOM level limits for 32bit 1 GB RAM
-    private final int[] mOomMinFreeHigh32Bit = new int[] {
-            61440, 76800, 92160,
-            107520, 137660, 174948
     };
     // These are the low-end OOM level limits.  This is appropriate for an
     // HVGA or smaller phone with less than 512MB.  Values are in KB.
@@ -276,24 +277,15 @@ final class ProcessList {
             Slog.i("XXXXXX", "minfree_adj=" + minfree_adj + " minfree_abs=" + minfree_abs);
         }
 
-        // We've now baked in the increase to the basic oom values above, since
-        // they seem to be useful more generally for devices that are tight on
-        // memory than just for 64 bit.  This should probably have some more
-        // tuning done, so not deleting it quite yet...
         final boolean is64bit = Build.SUPPORTED_64_BIT_ABIS.length > 0;
 
         for (int i=0; i<mOomAdj.length; i++) {
             int low = mOomMinFreeLow[i];
             int high = mOomMinFreeHigh[i];
             if (is64bit) {
-                Slog.i("XXXXXX", "choosing minFree values for 64 Bit");
                 // Increase the high min-free levels for cached processes for 64-bit
                 if (i == 4) high = (high*3)/2;
                 else if (i == 5) high = (high*7)/4;
-            } else {
-                Slog.i("XXXXXX", "choosing minFree values for 32 Bit");
-                low = mOomMinFreeLow32Bit[i];
-                high = mOomMinFreeHigh32Bit[i];
             }
             mOomMinFree[i] = (int)(low + ((high-low)*scale));
         }
@@ -720,15 +712,16 @@ final class ProcessList {
     }
 
     private static void writeLmkd(ByteBuffer buf) {
+
         for (int i = 0; i < 3; i++) {
             if (sLmkdSocket == null) {
-                if (openLmkdSocket() == false) {
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException ie) {
+                    if (openLmkdSocket() == false) {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException ie) {
+                        }
+                        continue;
                     }
-                    continue;
-                }
             }
 
             try {
@@ -745,56 +738,5 @@ final class ProcessList {
                 sLmkdSocket = null;
             }
         }
-    }
-
-    private static final int[] PROCESS_STATS_FORMAT;
-    static {
-        PROCESS_STATS_FORMAT = new int[31];
-        java.util.Arrays.fill(PROCESS_STATS_FORMAT, android.os.Process.PROC_SPACE_TERM);
-        // Process name enclosed in parentheses
-        PROCESS_STATS_FORMAT[1] |= android.os.Process.PROC_PARENS;
-        // Process state (D/R/S/T/Z)
-        PROCESS_STATS_FORMAT[2] |= android.os.Process.PROC_OUT_STRING;
-        // Bit mask of pending signals
-        PROCESS_STATS_FORMAT[30] |= android.os.Process.PROC_OUT_STRING;
-    }
-
-    static boolean isAlive(int pid, boolean noisy) {
-        final String[] procStats = new String[2];
-        final String stat = "/proc/" + pid + "/stat";
-        if (android.os.Process.readProcFile(stat, PROCESS_STATS_FORMAT,
-                procStats, null, null)) {
-            if ("Z".equals(procStats[0])) {
-                if (noisy) {
-                    Slog.i(TAG, pid + " is zombie state");
-                }
-                return false;
-            }
-            try {
-                int pendingSignals = Integer.parseInt(procStats[1]);
-                if ((pendingSignals & (1 << 8)) != 0) {
-                    if (noisy) {
-                        Slog.i(TAG, pid + " has pending signal 9");
-                    }
-                    return false;
-                }
-            } catch (NumberFormatException e) {
-                Slog.w(TAG, "Unknown pending signals " + procStats[1] + " of " + pid);
-            }
-        } else {
-            boolean exists = false;
-            try {
-                exists = libcore.io.Libcore.os.access(stat, android.system.OsConstants.F_OK);
-            } catch (android.system.ErrnoException e) {
-                exists = e.errno != android.system.OsConstants.ENOENT;
-            }
-            if (!exists) {
-                if (noisy) {
-                    Slog.i(TAG, stat + " does not exist");
-                }
-                return false;
-            }
-        }
-        return true;
     }
 }

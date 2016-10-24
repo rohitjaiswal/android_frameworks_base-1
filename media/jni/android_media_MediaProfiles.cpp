@@ -92,17 +92,12 @@ android_media_MediaProfiles_native_get_video_encoder_cap(JNIEnv *env, jobject /*
     int maxFrameWidth = sProfiles->getVideoEncoderParamByName("enc.vid.width.max", encoder);
     int minFrameHeight = sProfiles->getVideoEncoderParamByName("enc.vid.height.min", encoder);
     int maxFrameHeight = sProfiles->getVideoEncoderParamByName("enc.vid.height.max", encoder);
-    int maxHFRFrameWidth = sProfiles->getVideoEncoderParamByName("enc.vid.hfr.width.max", encoder);
-    int maxHFRFrameHeight = sProfiles->getVideoEncoderParamByName("enc.vid.hfr.height.max", encoder);
-    int maxHFRMode = sProfiles->getVideoEncoderParamByName("enc.vid.hfr.mode.max", encoder);
 
     // Check on the values retrieved
     if ((minBitRate == -1 || maxBitRate == -1) ||
         (minFrameRate == -1 || maxFrameRate == -1) ||
         (minFrameWidth == -1 || maxFrameWidth == -1) ||
-        (minFrameHeight == -1 || maxFrameHeight == -1) ||
-        (maxHFRFrameWidth == -1 || maxHFRFrameHeight == -1) ||
-        (maxHFRMode == -1)) {
+        (minFrameHeight == -1 || maxFrameHeight == -1)) {
 
         jniThrowException(env, "java/lang/RuntimeException", "Error retrieving video encoder capability params");
         return NULL;
@@ -110,16 +105,14 @@ android_media_MediaProfiles_native_get_video_encoder_cap(JNIEnv *env, jobject /*
 
     // Construct an instance of the VideoEncoderCap and set its member variables
     jclass videoEncoderCapClazz = env->FindClass("android/media/EncoderCapabilities$VideoEncoderCap");
-    jmethodID videoEncoderCapConstructorMethodID = env->GetMethodID(videoEncoderCapClazz, "<init>", "(IIIIIIIIIIII)V");
+    jmethodID videoEncoderCapConstructorMethodID = env->GetMethodID(videoEncoderCapClazz, "<init>", "(IIIIIIIII)V");
     jobject cap = env->NewObject(videoEncoderCapClazz,
                                  videoEncoderCapConstructorMethodID,
                                  static_cast<int>(encoder),
                                  minBitRate, maxBitRate,
                                  minFrameRate, maxFrameRate,
                                  minFrameWidth, maxFrameWidth,
-                                 minFrameHeight, maxFrameHeight,
-                                 maxHFRFrameWidth, maxHFRFrameHeight,
-                                 maxHFRMode);
+                                 minFrameHeight, maxFrameHeight);
     return cap;
 }
 
@@ -310,7 +303,7 @@ android_media_MediaProfiles_native_get_image_encoding_quality_level(JNIEnv *env,
     }
     return static_cast<jint>(levels[index]);
 }
-static JNINativeMethod gMethodsForEncoderCapabilitiesClass[] = {
+static const JNINativeMethod gMethodsForEncoderCapabilitiesClass[] = {
     {"native_init",                            "()V",                    (void *)android_media_MediaProfiles_native_init},
     {"native_get_num_file_formats",            "()I",                    (void *)android_media_MediaProfiles_native_get_num_file_formats},
     {"native_get_file_format",                 "(I)I",                   (void *)android_media_MediaProfiles_native_get_file_format},
@@ -324,7 +317,7 @@ static JNINativeMethod gMethodsForEncoderCapabilitiesClass[] = {
                                                                          (void *)android_media_MediaProfiles_native_get_audio_encoder_cap},
 };
 
-static JNINativeMethod gMethodsForCamcorderProfileClass[] = {
+static const JNINativeMethod gMethodsForCamcorderProfileClass[] = {
     {"native_init",                            "()V",                    (void *)android_media_MediaProfiles_native_init},
     {"native_get_camcorder_profile",           "(II)Landroid/media/CamcorderProfile;",
                                                                          (void *)android_media_MediaProfiles_native_get_camcorder_profile},
@@ -332,7 +325,7 @@ static JNINativeMethod gMethodsForCamcorderProfileClass[] = {
                                                                          (void *)android_media_MediaProfiles_native_has_camcorder_profile},
 };
 
-static JNINativeMethod gMethodsForDecoderCapabilitiesClass[] = {
+static const JNINativeMethod gMethodsForDecoderCapabilitiesClass[] = {
     {"native_init",                            "()V",                    (void *)android_media_MediaProfiles_native_init},
     {"native_get_num_video_decoders",          "()I",                    (void *)android_media_MediaProfiles_native_get_num_video_decoders},
     {"native_get_num_audio_decoders",          "()I",                    (void *)android_media_MediaProfiles_native_get_num_audio_decoders},
@@ -340,7 +333,7 @@ static JNINativeMethod gMethodsForDecoderCapabilitiesClass[] = {
     {"native_get_audio_decoder_type",          "(I)I",                   (void *)android_media_MediaProfiles_native_get_audio_decoder_type},
 };
 
-static JNINativeMethod gMethodsForCameraProfileClass[] = {
+static const JNINativeMethod gMethodsForCameraProfileClass[] = {
     {"native_init",                            "()V",                    (void *)android_media_MediaProfiles_native_init},
     {"native_get_num_image_encoding_quality_levels",
                                                "(I)I",                   (void *)android_media_MediaProfiles_native_get_num_image_encoding_quality_levels},

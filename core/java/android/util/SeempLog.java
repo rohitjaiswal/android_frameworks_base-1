@@ -345,8 +345,6 @@ public final class SeempLog {
                 SEEMP_API_android_provider_Settings__get_AUTO_TIME_);
         value_to_get_map.put(Settings.System.SETUP_WIZARD_HAS_RUN,
                 SEEMP_API_android_provider_Settings__get_SETUP_WIZARD_HAS_RUN_);
-        value_to_get_map.put(Settings.System.SYS_PROP_SETTING_VERSION,
-                SEEMP_API_android_provider_Settings__get_SYS_PROP_SETTING_VERSION_);
         value_to_get_map.put(Settings.System.WIFI_WATCHDOG_BACKGROUND_CHECK_TIMEOUT_MS,
                 SEEMP_API_android_provider_Settings__get_WIFI_WATCHDOG_BACKGROUND_CHECK_TIMEOUT_MS_);
         value_to_get_map.put(Settings.System.LOCATION_PROVIDERS_ALLOWED,
@@ -558,8 +556,6 @@ public final class SeempLog {
                 SEEMP_API_android_provider_Settings__put_AUTO_TIME_);
         value_to_put_map.put(Settings.System.SETUP_WIZARD_HAS_RUN,
                 SEEMP_API_android_provider_Settings__put_SETUP_WIZARD_HAS_RUN_);
-        value_to_put_map.put(Settings.System.SYS_PROP_SETTING_VERSION,
-                SEEMP_API_android_provider_Settings__put_SYS_PROP_SETTING_VERSION_);
         value_to_put_map.put(Settings.System.WIFI_WATCHDOG_BACKGROUND_CHECK_TIMEOUT_MS,
                 SEEMP_API_android_provider_Settings__put_WIFI_WATCHDOG_BACKGROUND_CHECK_TIMEOUT_MS_);
         value_to_put_map.put(Settings.System.LOCATION_PROVIDERS_ALLOWED,

@@ -103,8 +103,9 @@ public abstract class ConnectionService extends Service {
     private static final int MSG_SWAP_CONFERENCE = 19;
     private static final int MSG_REJECT_WITH_MESSAGE = 20;
     private static final int MSG_SILENCE = 21;
-    private static final int MSG_SET_LOCAL_HOLD = 22;
-    private static final int MSG_EXPLICIT_TRANSFER = 23;
+    private static final int MSG_PULL_EXTERNAL_CALL = 22;
+    private static final int MSG_SEND_CALL_EVENT = 23;
+    private static final int MSG_ON_EXTRAS_CHANGED = 24;
     //Proprietary values starts after this.
     private static final int MSG_ADD_PARTICIPANT_WITH_CONFERENCE = 30;
 
@@ -121,6 +122,8 @@ public abstract class ConnectionService extends Service {
 
     private boolean mAreAccountsInitialized = false;
     private Conference sNullConference;
+    private Object mIdSyncRoot = new Object();
+    private int mId = 0;
 
     private final IBinder mBinder = new IConnectionService.Stub() {
         @Override
@@ -218,14 +221,6 @@ public abstract class ConnectionService extends Service {
         }
 
         @Override
-        public void setLocalCallHold(String callId, boolean lchState) {
-            SomeArgs args = SomeArgs.obtain();
-            args.arg1 = callId;
-            args.argi1 = lchState ? 1 : 0;
-            mHandler.obtainMessage(MSG_SET_LOCAL_HOLD, args).sendToTarget();
-        }
-
-        @Override
         public void conference(String callId1, String callId2) {
             SomeArgs args = SomeArgs.obtain();
             args.arg1 = callId1;
@@ -265,8 +260,25 @@ public abstract class ConnectionService extends Service {
         }
 
         @Override
-        public void explicitTransfer(String callId) {
-            mHandler.obtainMessage(MSG_EXPLICIT_TRANSFER, callId).sendToTarget();
+        public void pullExternalCall(String callId) {
+            mHandler.obtainMessage(MSG_PULL_EXTERNAL_CALL, callId).sendToTarget();
+        }
+
+        @Override
+        public void sendCallEvent(String callId, String event, Bundle extras) {
+            SomeArgs args = SomeArgs.obtain();
+            args.arg1 = callId;
+            args.arg2 = event;
+            args.arg3 = extras;
+            mHandler.obtainMessage(MSG_SEND_CALL_EVENT, args).sendToTarget();
+        }
+
+        @Override
+        public void onExtrasChanged(String callId, Bundle extras) {
+            SomeArgs args = SomeArgs.obtain();
+            args.arg1 = callId;
+            args.arg2 = extras;
+            mHandler.obtainMessage(MSG_ON_EXTRAS_CHANGED, args).sendToTarget();
         }
     };
 
@@ -374,17 +386,6 @@ public abstract class ConnectionService extends Service {
                 case MSG_STOP_DTMF_TONE:
                     stopDtmfTone((String) msg.obj);
                     break;
-                case MSG_SET_LOCAL_HOLD: {
-                    SomeArgs args = (SomeArgs) msg.obj;
-                    try {
-                        String callId = (String) args.arg1;
-                        boolean lchStatus = (args.argi1 == 1);
-                        setLocalCallHold(callId, lchStatus);
-                    } finally {
-                        args.recycle();
-                    }
-                    break;
-                }
                 case MSG_CONFERENCE: {
                     SomeArgs args = (SomeArgs) msg.obj;
                     try {
@@ -427,9 +428,33 @@ public abstract class ConnectionService extends Service {
                     }
                     break;
                 }
-                case MSG_EXPLICIT_TRANSFER:
-                    transfer((String) msg.obj);
+                case MSG_PULL_EXTERNAL_CALL: {
+                    pullExternalCall((String) msg.obj);
                     break;
+                }
+                case MSG_SEND_CALL_EVENT: {
+                    SomeArgs args = (SomeArgs) msg.obj;
+                    try {
+                        String callId = (String) args.arg1;
+                        String event = (String) args.arg2;
+                        Bundle extras = (Bundle) args.arg3;
+                        sendCallEvent(callId, event, extras);
+                    } finally {
+                        args.recycle();
+                    }
+                    break;
+                }
+                case MSG_ON_EXTRAS_CHANGED: {
+                    SomeArgs args = (SomeArgs) msg.obj;
+                    try {
+                        String callId = (String) args.arg1;
+                        Bundle extras = (Bundle) args.arg2;
+                        handleExtrasChanged(callId, extras);
+                    } finally {
+                        args.recycle();
+                    }
+                    break;
+                }
                 default:
                     break;
             }
@@ -518,13 +543,25 @@ public abstract class ConnectionService extends Service {
         @Override
         public void onStatusHintsChanged(Conference conference, StatusHints statusHints) {
             String id = mIdByConference.get(conference);
-            mAdapter.setStatusHints(id, statusHints);
+            if (id != null) {
+                mAdapter.setStatusHints(id, statusHints);
+            }
         }
 
         @Override
-        public void onExtrasChanged(Conference conference, Bundle extras) {
-            String id = mIdByConference.get(conference);
-            mAdapter.setExtras(id, extras);
+        public void onExtrasChanged(Conference c, Bundle extras) {
+            String id = mIdByConference.get(c);
+            if (id != null) {
+                mAdapter.putExtras(id, extras);
+            }
+        }
+
+        @Override
+        public void onExtrasRemoved(Conference c, List<String> keys) {
+            String id = mIdByConference.get(c);
+            if (id != null) {
+                mAdapter.removeExtras(id, keys);
+            }
         }
     };
 
@@ -673,17 +710,27 @@ public abstract class ConnectionService extends Service {
         }
 
         @Override
-        public void onExtrasChanged(Connection connection, Bundle extras) {
-            String id = mIdByConnection.get(connection);
+        public void onExtrasChanged(Connection c, Bundle extras) {
+            String id = mIdByConnection.get(c);
             if (id != null) {
-                mAdapter.setExtras(id, extras);
+                mAdapter.putExtras(id, extras);
+            }
+        }
+        
+        public void onExtrasRemoved(Connection c, List<String> keys) {
+            String id = mIdByConnection.get(c);
+            if (id != null) {
+                mAdapter.removeExtras(id, keys);
             }
         }
 
+
         @Override
-        public void onCdmaConnectionTimeReset(Connection c) {
-            String id = mIdByConnection.get(c);
-            mAdapter.resetCdmaConnectionTime(id);
+        public void onConnectionEvent(Connection connection, String event, Bundle extras) {
+            String id = mIdByConnection.get(connection);
+            if (id != null) {
+                mAdapter.onConnectionEvent(id, event, extras);
+            }
         }
     };
 
@@ -712,7 +759,8 @@ public abstract class ConnectionService extends Service {
             boolean isIncoming,
             boolean isUnknown) {
         Log.d(this, "createConnection, callManagerAccount: %s, callId: %s, request: %s, " +
-                "isIncoming: %b, isUnknown: %b", callManagerAccount, callId, request, isIncoming,
+                        "isIncoming: %b, isUnknown: %b", callManagerAccount, callId, request,
+                isIncoming,
                 isUnknown);
 
         Connection connection = isUnknown ? onCreateUnknownConnection(callManagerAccount, request)
@@ -724,6 +772,7 @@ public abstract class ConnectionService extends Service {
                     new DisconnectCause(DisconnectCause.ERROR));
         }
 
+        connection.setTelecomCallId(callId);
         if (connection.getState() != Connection.STATE_DISCONNECTED) {
             addConnection(callId, connection);
         }
@@ -812,11 +861,6 @@ public abstract class ConnectionService extends Service {
         }
     }
 
-    private void transfer(String callId) {
-        Log.d(this, "transfer %s", callId);
-        findConnectionForAction(callId, "transfer").onTransfer();
-    }
-
     private void unhold(String callId) {
         Log.d(this, "unhold %s", callId);
         if (mConnectionById.containsKey(callId)) {
@@ -853,11 +897,6 @@ public abstract class ConnectionService extends Service {
         } else {
             findConferenceForAction(callId, "stopDtmfTone").onStopDtmfTone();
         }
-    }
-
-    private void setLocalCallHold(String callId, boolean lchStatus) {
-        Log.d(this, "setLocalCallHold %s", callId);
-        findConnectionForAction(callId, "setLocalCallHold").setLocalCallHold(lchStatus);
     }
 
     private void conference(String callId1, String callId2) {
@@ -946,6 +985,60 @@ public abstract class ConnectionService extends Service {
         Conference conference = findConferenceForAction(callId, "swapConference");
         if (conference != null) {
             conference.onSwap();
+        }
+    }
+
+    /**
+     * Notifies a {@link Connection} of a request to pull an external call.
+     *
+     * See {@link Call#pullExternalCall()}.
+     *
+     * @param callId The ID of the call to pull.
+     */
+    private void pullExternalCall(String callId) {
+        Log.d(this, "pullExternalCall(%s)", callId);
+        Connection connection = findConnectionForAction(callId, "pullExternalCall");
+        if (connection != null) {
+            connection.onPullExternalCall();
+        }
+    }
+
+    /**
+     * Notifies a {@link Connection} of a call event.
+     *
+     * See {@link Call#sendCallEvent(String, Bundle)}.
+     *
+     * @param callId The ID of the call receiving the event.
+     * @param event The event.
+     * @param extras Extras associated with the event.
+     */
+    private void sendCallEvent(String callId, String event, Bundle extras) {
+        Log.d(this, "sendCallEvent(%s, %s)", callId, event);
+        Connection connection = findConnectionForAction(callId, "sendCallEvent");
+        if (connection != null) {
+            connection.onCallEvent(event, extras);
+        }
+
+    }
+
+    /**
+     * Notifies a {@link Connection} or {@link Conference} of a change to the extras from Telecom.
+     * <p>
+     * These extra changes can originate from Telecom itself, or from an {@link InCallService} via
+     * the {@link android.telecom.Call#putExtra(String, boolean)},
+     * {@link android.telecom.Call#putExtra(String, int)},
+     * {@link android.telecom.Call#putExtra(String, String)},
+     * {@link Call#removeExtras(List)}.
+     *
+     * @param callId The ID of the call receiving the event.
+     * @param extras The new extras bundle.
+     */
+    private void handleExtrasChanged(String callId, Bundle extras) {
+        Log.d(this, "handleExtrasChanged(%s, %s)", callId, extras);
+        if (mConnectionById.containsKey(callId)) {
+            findConnectionForAction(callId, "handleExtrasChanged").handleExtrasChanged(extras);
+        } else if (mConferenceById.containsKey(callId)) {
+            findConferenceForAction(callId, "handleExtrasChanged").handleExtrasChanged(extras);
         }
     }
 
@@ -1064,6 +1157,7 @@ public abstract class ConnectionService extends Service {
                     connectionIds.add(mIdByConnection.get(connection));
                 }
             }
+            conference.setTelecomCallId(id);
             ParcelableConference parcelableConference = new ParcelableConference(
                     conference.getPhoneAccountHandle(),
                     conference.getState(),
@@ -1101,7 +1195,7 @@ public abstract class ConnectionService extends Service {
     public final void addExistingConnection(PhoneAccountHandle phoneAccountHandle,
             Connection connection) {
 
-        String id = addExistingConnectionInternal(connection);
+        String id = addExistingConnectionInternal(phoneAccountHandle, connection);
         if (id != null) {
             List<String> emptyList = new ArrayList<>(0);
 
@@ -1136,6 +1230,16 @@ public abstract class ConnectionService extends Service {
      */
     public final Collection<Connection> getAllConnections() {
         return mConnectionById.values();
+    }
+
+    /**
+     * Returns all the active {@code Conference}s for which this {@code ConnectionService}
+     * has taken responsibility.
+     *
+     * @return A collection of {@code Conference}s created by this {@code ConnectionService}.
+     */
+    public final Collection<Conference> getAllConferences() {
+        return mConferenceById.values();
     }
 
     /**
@@ -1277,18 +1381,29 @@ public abstract class ConnectionService extends Service {
     }
 
     /**
-     * Adds an existing connection to the list of connections, identified by a new UUID.
+     * Adds an existing connection to the list of connections, identified by a new call ID unique
+     * to this connection service.
      *
      * @param connection The connection.
-     * @return The UUID of the connection (e.g. the call-id).
+     * @return The ID of the connection (e.g. the call-id).
      */
-    private String addExistingConnectionInternal(Connection connection) {
-        String id = UUID.randomUUID().toString();
+    private String addExistingConnectionInternal(PhoneAccountHandle handle, Connection connection) {
+        String id;
+        if (handle == null) {
+            // If no phone account handle was provided, we cannot be sure the call ID is unique,
+            // so just use a random UUID.
+            id = UUID.randomUUID().toString();
+        } else {
+            // Phone account handle was provided, so use the ConnectionService class name as a
+            // prefix for a unique incremental call ID.
+            id = handle.getComponentName().getClassName() + "@" + getNextCallId();
+        }
         addConnection(id, connection);
         return id;
     }
 
     private void addConnection(String callId, Connection connection) {
+        connection.setTelecomCallId(callId);
         mConnectionById.put(callId, connection);
         mIdByConnection.put(connection, callId);
         connection.addConnectionListener(mConnectionListener);
@@ -1297,18 +1412,23 @@ public abstract class ConnectionService extends Service {
 
     /** {@hide} */
     protected void removeConnection(Connection connection) {
-        String id = mIdByConnection.get(connection);
         connection.unsetConnectionService(this);
         connection.removeConnectionListener(mConnectionListener);
-        mConnectionById.remove(mIdByConnection.get(connection));
-        mIdByConnection.remove(connection);
-        mAdapter.removeCall(id);
+        String id = mIdByConnection.get(connection);
+        if (id != null) {
+            mConnectionById.remove(id);
+            mIdByConnection.remove(connection);
+            mAdapter.removeCall(id);
+        }
     }
 
     private String addConferenceInternal(Conference conference) {
         if (mIdByConference.containsKey(conference)) {
             Log.w(this, "Re-adding an existing conference: %s.", conference);
         } else if (conference != null) {
+            // Conferences do not (yet) have a PhoneAccountHandle associated with them, so we
+            // cannot determine a ConnectionService class name to associate with the ID, so use
+            // a unique UUID (for now).
             String id = UUID.randomUUID().toString();
             mConferenceById.put(id, conference);
             mIdByConference.put(conference, id);
@@ -1408,6 +1528,17 @@ public abstract class ConnectionService extends Service {
         }
         for (Conference conference : mIdByConference.keySet()) {
             conference.onDisconnect();
+        }
+    }
+
+    /**
+     * Retrieves the next call ID as maintainted by the connection service.
+     *
+     * @return The call ID.
+     */
+    private int getNextCallId() {
+        synchronized(mIdSyncRoot) {
+            return ++mId;
         }
     }
 }

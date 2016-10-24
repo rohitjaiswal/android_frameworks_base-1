@@ -190,10 +190,10 @@ public class NetworkTraffic extends TextView {
                     .getUriFor(Settings.System.NETWORK_TRAFFIC_AUTOHIDE), false,
                     this, UserHandle.USER_ALL);
             resolver.registerContentObserver(Settings.System
-                    .getUriFor(Settings.System.NETWORK_TRAFFIC_HIDEARROW), false,
+                    .getUriFor(Settings.System.NETWORK_TRAFFIC_AUTOHIDE_THRESHOLD), false,
                     this, UserHandle.USER_ALL);
             resolver.registerContentObserver(Settings.System
-                    .getUriFor(Settings.System.NETWORK_TRAFFIC_AUTOHIDE_THRESHOLD), false,
+                    .getUriFor(Settings.System.NETWORK_TRAFFIC_HIDEARROW), false,
                     this, UserHandle.USER_ALL);
         }
 
@@ -285,19 +285,19 @@ public class NetworkTraffic extends TextView {
                 Settings.System.NETWORK_TRAFFIC_AUTOHIDE, 0,
                 UserHandle.USER_CURRENT) == 1;
 
-        mHideArrow = Settings.System.getIntForUser(resolver,
-                Settings.System.NETWORK_TRAFFIC_HIDEARROW, 0,
-                UserHandle.USER_CURRENT) == 1;
-
         mAutoHideThreshold = Settings.System.getIntForUser(resolver,
                 Settings.System.NETWORK_TRAFFIC_AUTOHIDE_THRESHOLD, 10,
                 UserHandle.USER_CURRENT);
+
+        mHideArrow = Settings.System.getIntForUser(resolver,
+                Settings.System.NETWORK_TRAFFIC_HIDEARROW, 0,
+                UserHandle.USER_CURRENT) == 1;
 
         mState = Settings.System.getInt(resolver, Settings.System.NETWORK_TRAFFIC_STATE, 0);
 
         int mNetworkTrafficColor = mIconTint;
 
-	    setTextColor(mNetworkTrafficColor);
+        setTextColor(mNetworkTrafficColor);
 
         if (isSet(mState, MASK_UNIT)) {
             KB = KILOBYTE;
@@ -355,6 +355,7 @@ public class NetworkTraffic extends TextView {
             if (intTrafficDrawable != 0) {
                 drawTrafficIcon = getResources().getDrawable(intTrafficDrawable);
                 drawTrafficIcon.setColorFilter(null);
+                drawTrafficIcon.setColorFilter(trafcolor, PorterDuff.Mode.SRC_ATOP);
             }
         } else {
             drawTrafficIcon = null;

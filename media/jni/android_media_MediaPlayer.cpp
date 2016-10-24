@@ -1066,14 +1066,16 @@ android_media_MediaPlayer_native_finalize(JNIEnv *env, jobject thiz)
     android_media_MediaPlayer_release(env, thiz);
 }
 
-static void android_media_MediaPlayer_set_audio_session_id(JNIEnv *env,  jobject thiz, jint sessionId) {
+static void android_media_MediaPlayer_set_audio_session_id(JNIEnv *env,  jobject thiz,
+        jint sessionId) {
     ALOGV("set_session_id(): %d", sessionId);
     sp<MediaPlayer> mp = getMediaPlayer(env, thiz);
     if (mp == NULL ) {
         jniThrowException(env, "java/lang/IllegalStateException", NULL);
         return;
     }
-    process_media_player_call( env, thiz, mp->setAudioSessionId(sessionId), NULL, NULL );
+    process_media_player_call( env, thiz, mp->setAudioSessionId((audio_session_t) sessionId), NULL,
+            NULL);
 }
 
 static jint android_media_MediaPlayer_get_audio_session_id(JNIEnv *env,  jobject thiz) {
@@ -1191,41 +1193,9 @@ android_media_MediaPlayer_setNextMediaPlayer(JNIEnv *env, jobject thiz, jobject 
     ;
 }
 
-static jboolean
-android_media_MediaPlayer_suspend(JNIEnv *env, jobject thiz)
-{
-    sp<MediaPlayer> mp = getMediaPlayer(env, thiz);
-    if (mp == NULL) {
-        jniThrowException(env, "java/lang/IllegalStateException", NULL);
-        return false;
-    }
-
-    if (mp->suspend() != OK) {
-        return false;
-    }
-
-    return true;
-}
-
-static jboolean
-android_media_MediaPlayer_resume(JNIEnv *env, jobject thiz)
-{
-    sp<MediaPlayer> mp = getMediaPlayer(env, thiz);
-    if (mp == NULL) {
-        jniThrowException(env, "java/lang/IllegalStateException", NULL);
-        return false;
-    }
-
-    if (mp->resume() != OK) {
-        return false;
-    }
-
-    return true;
-}
-
 // ----------------------------------------------------------------------------
 
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     {
         "nativeSetDataSource",
         "(Landroid/os/IBinder;Ljava/lang/String;[Ljava/lang/String;"
@@ -1272,8 +1242,6 @@ static JNINativeMethod gMethods[] = {
     {"native_pullBatteryData", "(Landroid/os/Parcel;)I",        (void *)android_media_MediaPlayer_pullBatteryData},
     {"native_setRetransmitEndpoint", "(Ljava/lang/String;I)I",  (void *)android_media_MediaPlayer_setRetransmitEndpoint},
     {"setNextMediaPlayer",  "(Landroid/media/MediaPlayer;)V",   (void *)android_media_MediaPlayer_setNextMediaPlayer},
-    {"_suspend",             "()Z",                             (void *)android_media_MediaPlayer_suspend},
-    {"_resume",              "()Z",                             (void *)android_media_MediaPlayer_resume},
 };
 
 // This function only registers the native methods
@@ -1282,6 +1250,7 @@ static int register_android_media_MediaPlayer(JNIEnv *env)
     return AndroidRuntime::registerNativeMethods(env,
                 "android/media/MediaPlayer", gMethods, NELEM(gMethods));
 }
+extern int register_android_media_ExifInterface(JNIEnv *env);
 extern int register_android_media_ImageReader(JNIEnv *env);
 extern int register_android_media_ImageWriter(JNIEnv *env);
 extern int register_android_media_Crypto(JNIEnv *env);
@@ -1410,6 +1379,11 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
 
     if (register_android_media_MediaHTTPConnection(env) < 0) {
         ALOGE("ERROR: MediaHTTPConnection native registration failed");
+        goto bail;
+    }
+
+    if (register_android_media_ExifInterface(env) < 0) {
+        ALOGE("ERROR: ExifInterface native registration failed");
         goto bail;
     }
 

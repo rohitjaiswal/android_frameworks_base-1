@@ -65,4 +65,9 @@ public class WindowManagerImpl implements WindowManager {
     public void removeViewImmediate(View arg0) {
         // pass
     }
+
+    @Override
+    public void requestAppKeyboardShortcuts(
+            KeyboardShortcutsReceiver receiver, int deviceId) {
+    }
 }

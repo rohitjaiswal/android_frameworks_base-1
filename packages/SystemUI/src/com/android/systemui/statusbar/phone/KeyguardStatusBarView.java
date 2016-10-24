@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 The Android Open Source Project
- * Copyright (C) 2016 The CyanogenMod Project
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,10 +17,8 @@
 package com.android.systemui.statusbar.phone;
 
 import android.content.Context;
-import android.content.ContentResolver;
 import android.content.res.Configuration;
 import android.database.ContentObserver;
-import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Handler;
@@ -30,71 +28,45 @@ import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewTreeObserver;
-import android.view.animation.AnimationUtils;
-import android.view.animation.Interpolator;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.android.internal.util.aicp.AicpUtils;
-import com.android.systemui.BatteryLevelTextView;
 import com.android.systemui.BatteryMeterView;
-import com.android.systemui.DockBatteryMeterView;
+import com.android.systemui.Interpolators;
 import com.android.systemui.R;
+import com.android.systemui.qs.QSPanel;
 import com.android.systemui.statusbar.policy.BatteryController;
-import com.android.systemui.statusbar.policy.DockBatteryController;
 import com.android.systemui.statusbar.policy.KeyguardUserSwitcher;
 import com.android.systemui.statusbar.policy.UserInfoController;
 import com.android.systemui.statusbar.policy.UserSwitcherController;
 
+import java.text.NumberFormat;
+
 /**
  * The header group on Keyguard.
  */
-public class KeyguardStatusBarView extends RelativeLayout {
+public class KeyguardStatusBarView extends RelativeLayout
+        implements BatteryController.BatteryStateChangeCallback {
 
+    private boolean mBatteryCharging;
     private boolean mKeyguardUserSwitcherShowing;
+    private boolean mBatteryListening;
 
+    private int mShowCarrierLabel;
+
+    private TextView mCarrierLabel;
     private View mSystemIconsSuperContainer;
     private MultiUserSwitch mMultiUserSwitch;
     private ImageView mMultiUserAvatar;
-    private BatteryLevelTextView mBatteryLevel;
-    private BatteryLevelTextView mDockBatteryLevel;
+    private TextView mBatteryLevel;
 
-    private TextView mCarrierLabel;
-    private int mCarrierLabelSpot;
-    private int mShowCarrierLabel;
-
-    public static final int FONT_NORMAL = 0;
-    public static final int FONT_ITALIC = 1;
-    public static final int FONT_BOLD = 2;
-    public static final int FONT_BOLD_ITALIC = 3;
-    public static final int FONT_LIGHT = 4;
-    public static final int FONT_LIGHT_ITALIC = 5;
-    public static final int FONT_THIN = 6;
-    public static final int FONT_THIN_ITALIC = 7;
-    public static final int FONT_CONDENSED = 8;
-    public static final int FONT_CONDENSED_ITALIC = 9;
-    public static final int FONT_CONDENSED_LIGHT = 10;
-    public static final int FONT_CONDENSED_LIGHT_ITALIC = 11;
-    public static final int FONT_CONDENSED_BOLD = 12;
-    public static final int FONT_CONDENSED_BOLD_ITALIC = 13;
-    public static final int FONT_MEDIUM = 14;
-    public static final int FONT_MEDIUM_ITALIC = 15;
-    public static final int FONT_BLACK = 16;
-    public static final int FONT_BLACK_ITALIC = 17;
-    public static final int FONT_DANCINGSCRIPT = 18;
-    public static final int FONT_DANCINGSCRIPT_BOLD = 19;
-    public static final int FONT_COMINGSOON = 20;
-    public static final int FONT_NOTOSERIF = 21;
-    public static final int FONT_NOTOSERIF_ITALIC = 22;
-    public static final int FONT_NOTOSERIF_BOLD = 23;
-    public static final int FONT_NOTOSERIF_BOLD_ITALIC = 24;
-    private int mCarrierLabelFontStyle = FONT_NORMAL;
-
+    private BatteryController mBatteryController;
     private KeyguardUserSwitcher mKeyguardUserSwitcher;
 
     private int mSystemIconsSwitcherHiddenExpandedMargin;
-    private Interpolator mFastOutSlowInInterpolator;
+    private View mSystemIconsContainer;
 
     private ContentObserver mObserver = new ContentObserver(new Handler()) {
         public void onChange(boolean selfChange, Uri uri) {
@@ -103,39 +75,29 @@ public class KeyguardStatusBarView extends RelativeLayout {
         }
     };
 
-    private UserInfoController mUserInfoController;
-
     public KeyguardStatusBarView(Context context, AttributeSet attrs) {
         super(context, attrs);
         showStatusBarCarrier();
     }
 
     private void showStatusBarCarrier() {
-        ContentResolver resolver = getContext().getContentResolver();
-
-        mShowCarrierLabel = Settings.System.getIntForUser(resolver,
-                Settings.System.STATUS_BAR_SHOW_CARRIER, 0,
-                UserHandle.USER_CURRENT);
-        mCarrierLabelSpot = Settings.System.getIntForUser(resolver,
-                Settings.System.STATUS_BAR_CARRIER_SPOT, 0,
-                UserHandle.USER_CURRENT);
-        mCarrierLabelFontStyle = Settings.System.getIntForUser(resolver,
-                Settings.System.STATUS_BAR_CARRIER_FONT_STYLE, FONT_NORMAL,
-                UserHandle.USER_CURRENT);
+        mShowCarrierLabel = Settings.System.getIntForUser(getContext().getContentResolver(),
+                Settings.System.STATUS_BAR_SHOW_CARRIER, 1, UserHandle.USER_CURRENT);
     }
 
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
         mSystemIconsSuperContainer = findViewById(R.id.system_icons_super_container);
+        mSystemIconsContainer = findViewById(R.id.system_icons_container);
         mMultiUserSwitch = (MultiUserSwitch) findViewById(R.id.multi_user_switch);
         mMultiUserAvatar = (ImageView) findViewById(R.id.multi_user_avatar);
-        mBatteryLevel = (BatteryLevelTextView) findViewById(R.id.battery_level_text);
-        mDockBatteryLevel = (BatteryLevelTextView) findViewById(R.id.dock_battery_level_text);
+        mBatteryLevel = (TextView) findViewById(R.id.battery_level);
         mCarrierLabel = (TextView) findViewById(R.id.keyguard_carrier_text);
+        if (AicpUtils.isWifiOnly(getContext())) {
+            mCarrierLabel.setText("");
+        }
         loadDimens();
-        mFastOutSlowInInterpolator = AnimationUtils.loadInterpolator(getContext(),
-                android.R.interpolator.fast_out_slow_in);
         updateUserSwitcher();
         updateVisibilities();
     }
@@ -144,18 +106,58 @@ public class KeyguardStatusBarView extends RelativeLayout {
     protected void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
 
+        MarginLayoutParams lp = (MarginLayoutParams) mMultiUserAvatar.getLayoutParams();
+        lp.width = lp.height = getResources().getDimensionPixelSize(
+                R.dimen.multi_user_avatar_keyguard_size);
+        mMultiUserAvatar.setLayoutParams(lp);
+
+        lp = (MarginLayoutParams) mMultiUserSwitch.getLayoutParams();
+        lp.width = getResources().getDimensionPixelSize(
+                R.dimen.multi_user_switch_width_keyguard);
+        lp.setMarginEnd(getResources().getDimensionPixelSize(
+                R.dimen.multi_user_switch_keyguard_margin));
+        mMultiUserSwitch.setLayoutParams(lp);
+
+        lp = (MarginLayoutParams) mSystemIconsSuperContainer.getLayoutParams();
+        lp.height = getResources().getDimensionPixelSize(
+                R.dimen.status_bar_header_height);
+        lp.setMarginStart(getResources().getDimensionPixelSize(
+                R.dimen.system_icons_super_container_margin_start));
+        mSystemIconsSuperContainer.setLayoutParams(lp);
+        mSystemIconsSuperContainer.setPaddingRelative(mSystemIconsSuperContainer.getPaddingStart(),
+                mSystemIconsSuperContainer.getPaddingTop(),
+                getResources().getDimensionPixelSize(R.dimen.system_icons_keyguard_padding_end),
+                mSystemIconsSuperContainer.getPaddingBottom());
+
+        lp = (MarginLayoutParams) mSystemIconsContainer.getLayoutParams();
+        lp.height = getResources().getDimensionPixelSize(
+                R.dimen.status_bar_height);
+        mSystemIconsContainer.setLayoutParams(lp);
+
+        lp = (MarginLayoutParams) mBatteryLevel.getLayoutParams();
+        lp.setMarginStart(
+                getResources().getDimensionPixelSize(R.dimen.header_battery_margin_keyguard));
+        mBatteryLevel.setLayoutParams(lp);
+        mBatteryLevel.setPaddingRelative(mBatteryLevel.getPaddingStart(),
+                mBatteryLevel.getPaddingTop(),
+                getResources().getDimensionPixelSize(R.dimen.battery_level_padding_end),
+                mBatteryLevel.getPaddingBottom());
+        mBatteryLevel.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+                getResources().getDimensionPixelSize(R.dimen.battery_level_text_size));
+
         // Respect font size setting.
         mCarrierLabel.setTextSize(TypedValue.COMPLEX_UNIT_PX,
                 getResources().getDimensionPixelSize(
                         com.android.internal.R.dimen.text_size_small_material));
-    }
+        lp = (MarginLayoutParams) mCarrierLabel.getLayoutParams();
+        lp.setMarginStart(
+                getResources().getDimensionPixelSize(R.dimen.keyguard_carrier_text_margin));
+        mCarrierLabel.setLayoutParams(lp);
 
-    @Override
-    protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
-        if (mUserInfoController != null) {
-            mUserInfoController.removeListener(mUserInfoChangedListener);
-        }
+        lp = (MarginLayoutParams) getLayoutParams();
+        lp.height =  getResources().getDimensionPixelSize(
+                R.dimen.status_bar_header_height_keyguard);
+        setLayoutParams(lp);
     }
 
     private void loadDimens() {
@@ -172,21 +174,7 @@ public class KeyguardStatusBarView extends RelativeLayout {
         } else if (mMultiUserSwitch.getParent() == this && mKeyguardUserSwitcherShowing) {
             removeView(mMultiUserSwitch);
         }
-        mBatteryLevel.setVisibility(View.VISIBLE);
-        if (mDockBatteryLevel != null) {
-            mDockBatteryLevel.setVisibility(View.VISIBLE);
-        }
-
-        clearCarrierView();
-
-        if (mCarrierLabelSpot == 0) {
-            mCarrierLabel = (TextView) findViewById(R.id.left_keyguard_carrier_text);
-        }
-        if (mCarrierLabelSpot == 1) {
-            mCarrierLabel = (TextView) findViewById(R.id.keyguard_carrier_text);
-        }
-
-        getFontStyle(mCarrierLabelFontStyle);
+        mBatteryLevel.setVisibility(mBatteryCharging ? View.VISIBLE : View.GONE);
 
         if (mCarrierLabel != null) {
             if (mShowCarrierLabel == 1) {
@@ -196,119 +184,6 @@ public class KeyguardStatusBarView extends RelativeLayout {
             } else {
                 mCarrierLabel.setVisibility(View.GONE);
             }
-        }
-    }
-
-    public void clearCarrierView() {
-        mCarrierLabel = (TextView) findViewById(R.id.left_keyguard_carrier_text);
-        mCarrierLabel.setVisibility(View.GONE);
-        mCarrierLabel = (TextView) findViewById(R.id.keyguard_carrier_text);
-        mCarrierLabel.setVisibility(View.GONE);
-    }
-
-    public void getFontStyle(int font) {
-        switch (font) {
-            case FONT_NORMAL:
-            default:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif",
-                    Typeface.NORMAL));
-                break;
-            case FONT_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif",
-                    Typeface.ITALIC));
-                break;
-            case FONT_BOLD:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif",
-                    Typeface.BOLD));
-                break;
-            case FONT_BOLD_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif",
-                    Typeface.BOLD_ITALIC));
-                break;
-            case FONT_LIGHT:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-light",
-                    Typeface.NORMAL));
-                break;
-            case FONT_LIGHT_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-light",
-                    Typeface.ITALIC));
-                break;
-            case FONT_THIN:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-thin",
-                    Typeface.NORMAL));
-                break;
-            case FONT_THIN_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-thin",
-                    Typeface.ITALIC));
-                break;
-            case FONT_CONDENSED:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-condensed",
-                    Typeface.NORMAL));
-                break;
-            case FONT_CONDENSED_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-condensed",
-                    Typeface.ITALIC));
-                break;
-            case FONT_CONDENSED_LIGHT:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-condensed-light",
-                    Typeface.NORMAL));
-                break;
-            case FONT_CONDENSED_LIGHT_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-condensed-light",
-                    Typeface.ITALIC));
-                break;
-            case FONT_CONDENSED_BOLD:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-condensed",
-                    Typeface.BOLD));
-                break;
-            case FONT_CONDENSED_BOLD_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-condensed",
-                    Typeface.BOLD_ITALIC));
-                break;
-            case FONT_MEDIUM:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-medium",
-                    Typeface.NORMAL));
-                break;
-            case FONT_MEDIUM_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-medium",
-                    Typeface.ITALIC));
-                break;
-            case FONT_BLACK:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-black",
-                    Typeface.NORMAL));
-                break;
-            case FONT_BLACK_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("sans-serif-black",
-                    Typeface.ITALIC));
-                break;
-            case FONT_DANCINGSCRIPT:
-                mCarrierLabel.setTypeface(Typeface.create("cursive",
-                    Typeface.NORMAL));
-                break;
-            case FONT_DANCINGSCRIPT_BOLD:
-                mCarrierLabel.setTypeface(Typeface.create("cursive",
-                    Typeface.BOLD));
-                break;
-            case FONT_COMINGSOON:
-                mCarrierLabel.setTypeface(Typeface.create("casual",
-                    Typeface.NORMAL));
-                break;
-            case FONT_NOTOSERIF:
-                mCarrierLabel.setTypeface(Typeface.create("serif",
-                    Typeface.NORMAL));
-                break;
-            case FONT_NOTOSERIF_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("serif",
-                    Typeface.ITALIC));
-                break;
-            case FONT_NOTOSERIF_BOLD:
-                mCarrierLabel.setTypeface(Typeface.create("serif",
-                    Typeface.BOLD));
-                break;
-            case FONT_NOTOSERIF_BOLD_ITALIC:
-                mCarrierLabel.setTypeface(Typeface.create("serif",
-                    Typeface.BOLD_ITALIC));
-                break;
         }
     }
 
@@ -322,6 +197,18 @@ public class KeyguardStatusBarView extends RelativeLayout {
         }
     }
 
+    public void setListening(boolean listening) {
+        if (listening == mBatteryListening) {
+            return;
+        }
+        mBatteryListening = listening;
+        if (mBatteryListening) {
+            mBatteryController.addStateChangedCallback(this);
+        } else {
+            mBatteryController.removeStateChangedCallback(this);
+        }
+    }
+
     private void updateUserSwitcher() {
         boolean keyguardSwitcherAvailable = mKeyguardUserSwitcher != null;
         mMultiUserSwitch.setClickable(keyguardSwitcherAvailable);
@@ -330,43 +217,41 @@ public class KeyguardStatusBarView extends RelativeLayout {
     }
 
     public void setBatteryController(BatteryController batteryController) {
-        BatteryMeterView v = ((BatteryMeterView) findViewById(R.id.battery));
-        v.setBatteryStateRegistar(batteryController);
-        v.setBatteryController(batteryController);
-        mBatteryLevel.setBatteryStateRegistar(batteryController);
-    }
-
-    public void setDockBatteryController(DockBatteryController dockBatteryController) {
-        DockBatteryMeterView v = ((DockBatteryMeterView) findViewById(R.id.dock_battery));
-        if (dockBatteryController != null) {
-            v.setBatteryStateRegistar(dockBatteryController);
-            mDockBatteryLevel.setBatteryStateRegistar(dockBatteryController);
-        } else {
-            if (v != null ) {
-                removeView(v);
-            }
-            if (mDockBatteryLevel != null) {
-                removeView(mDockBatteryLevel);
-                mDockBatteryLevel = null;
-            }
-        }
+        mBatteryController = batteryController;
+        ((BatteryMeterView) findViewById(R.id.battery)).setBatteryController(batteryController);
     }
 
     public void setUserSwitcherController(UserSwitcherController controller) {
         mMultiUserSwitch.setUserSwitcherController(controller);
     }
 
-    private UserInfoController.OnUserInfoChangedListener mUserInfoChangedListener =
-            new UserInfoController.OnUserInfoChangedListener() {
-        @Override
-        public void onUserInfoChanged(String name, Drawable picture) {
-            mMultiUserAvatar.setImageDrawable(picture);
-        }
-    };
-
     public void setUserInfoController(UserInfoController userInfoController) {
-        mUserInfoController = userInfoController;
-        userInfoController.addListener(mUserInfoChangedListener);
+        userInfoController.addListener(new UserInfoController.OnUserInfoChangedListener() {
+            @Override
+            public void onUserInfoChanged(String name, Drawable picture) {
+                mMultiUserAvatar.setImageDrawable(picture);
+            }
+        });
+    }
+
+    public void setQSPanel(QSPanel qsp) {
+        mMultiUserSwitch.setQsPanel(qsp);
+    }
+
+    @Override
+    public void onBatteryLevelChanged(int level, boolean pluggedIn, boolean charging) {
+        String percentage = NumberFormat.getPercentInstance().format((double) level / 100.0);
+        mBatteryLevel.setText(percentage);
+        boolean changed = mBatteryCharging != charging;
+        mBatteryCharging = charging;
+        if (changed) {
+            updateVisibilities();
+        }
+    }
+
+    @Override
+    public void onPowerSaveChanged(boolean isPowerSave) {
+        // could not care less
     }
 
     public void setKeyguardUserSwitcher(KeyguardUserSwitcher keyguardUserSwitcher) {
@@ -398,7 +283,7 @@ public class KeyguardStatusBarView extends RelativeLayout {
                         .translationX(0)
                         .setDuration(400)
                         .setStartDelay(userSwitcherHiding ? 300 : 0)
-                        .setInterpolator(mFastOutSlowInInterpolator)
+                        .setInterpolator(Interpolators.FAST_OUT_SLOW_IN)
                         .start();
                 if (userSwitcherHiding) {
                     getOverlay().add(mMultiUserSwitch);
@@ -406,7 +291,7 @@ public class KeyguardStatusBarView extends RelativeLayout {
                             .alpha(0f)
                             .setDuration(300)
                             .setStartDelay(0)
-                            .setInterpolator(PhoneStatusBar.ALPHA_OUT)
+                            .setInterpolator(Interpolators.ALPHA_OUT)
                             .withEndAction(new Runnable() {
                                 @Override
                                 public void run() {
@@ -422,7 +307,7 @@ public class KeyguardStatusBarView extends RelativeLayout {
                             .alpha(1f)
                             .setDuration(300)
                             .setStartDelay(200)
-                            .setInterpolator(PhoneStatusBar.ALPHA_IN);
+                            .setInterpolator(Interpolators.ALPHA_IN);
                 }
                 return true;
             }
@@ -449,10 +334,11 @@ public class KeyguardStatusBarView extends RelativeLayout {
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
         getContext().getContentResolver().registerContentObserver(Settings.System.getUriFor(
-                "status_bar_show_carrier"), false, mObserver);
-        getContext().getContentResolver().registerContentObserver(Settings.System.getUriFor(
-                "status_bar_carrier_spot"), false, mObserver);
-        getContext().getContentResolver().registerContentObserver(Settings.System.getUriFor(
-                "status_bar_carrier_font_style"), false, mObserver);
+		        Settings.System.STATUS_BAR_SHOW_CARRIER), false, mObserver);
+    }
+
+    @Override
+    public void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
     }
 }

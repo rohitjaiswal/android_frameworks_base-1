@@ -770,7 +770,10 @@ public final class GeofenceHardwareImpl {
                     r = new Reaper(callback, monitoringType);
                     if (!mReapers.contains(r)) {
                         mReapers.add(r);
-                        r.link();
+                        IBinder b = callback.asBinder();
+                        try {
+                            b.linkToDeath(r, 0);
+                        } catch (RemoteException e) {}
                     }
                     break;
                 case REAPER_MONITOR_CALLBACK_ADDED:
@@ -780,14 +783,15 @@ public final class GeofenceHardwareImpl {
                     r = new Reaper(monitorCallback, monitoringType);
                     if (!mReapers.contains(r)) {
                         mReapers.add(r);
-                        r.link();
+                        IBinder b = monitorCallback.asBinder();
+                        try {
+                            b.linkToDeath(r, 0);
+                        } catch (RemoteException e) {}
                     }
                     break;
                 case REAPER_REMOVED:
                     r = (Reaper) msg.obj;
                     mReapers.remove(r);
-                    r.unlink();
-                    break;
             }
         }
     };
@@ -861,25 +865,6 @@ public final class GeofenceHardwareImpl {
             }
             Message reaperMessage = mReaperHandler.obtainMessage(REAPER_REMOVED, this);
             mReaperHandler.sendMessage(reaperMessage);
-        }
-
-        public void link() {
-            if (mCallback == null) {
-                return;
-            }
-
-            try {
-                mCallback.asBinder().linkToDeath(this, 0);
-            } catch (RemoteException re) {
-            }
-        }
-
-        public void unlink() {
-            if (mCallback == null) {
-                return;
-            }
-
-            mCallback.asBinder().unlinkToDeath(this, 0);
         }
 
         @Override

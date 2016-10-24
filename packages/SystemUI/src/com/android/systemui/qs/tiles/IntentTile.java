@@ -30,6 +30,7 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.internal.logging.MetricsLogger;
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.systemui.qs.QSTile;
 
 import java.util.Arrays;
@@ -42,6 +43,9 @@ public class IntentTile extends QSTile<QSTile.State> {
     private String mOnClickUri;
     private PendingIntent mOnLongClick;
     private String mOnLongClickUri;
+    private PendingIntent mOnLaunch;
+    private String mOnLaunchUri;
+
     private int mCurrentUserId;
     private String mIntentPackage;
 
@@ -71,10 +75,13 @@ public class IntentTile extends QSTile<QSTile.State> {
 
     @Override
     public void setListening(boolean listening) {
+        if (listening){
+            sendIntent("onLaunch", mOnLaunch, mOnLaunchUri);
+        }
     }
 
     @Override
-    protected State newTileState() {
+    public State newTileState() {
         return new State();
     }
 
@@ -88,6 +95,11 @@ public class IntentTile extends QSTile<QSTile.State> {
     protected void handleClick() {
         MetricsLogger.action(mContext, getMetricsCategory(), mIntentPackage);
         sendIntent("click", mOnClick, mOnClickUri);
+    }
+
+    @Override
+    public Intent getLongClickIntent() {
+        return null;
     }
 
     @Override
@@ -113,6 +125,11 @@ public class IntentTile extends QSTile<QSTile.State> {
     }
 
     @Override
+    public CharSequence getTileLabel() {
+        return getState().label;
+    }
+
+    @Override
     protected void handleUpdateState(State state, Object arg) {
         Intent intent = (Intent) arg;
         if (intent == null) {
@@ -124,7 +141,6 @@ public class IntentTile extends QSTile<QSTile.State> {
         }
         // Save the last one in case we need it later.
         mLastIntent = intent;
-        state.visible = intent.getBooleanExtra("visible", true);
         state.contentDescription = intent.getStringExtra("contentDescription");
         state.label = intent.getStringExtra("label");
         state.icon = null;
@@ -150,13 +166,15 @@ public class IntentTile extends QSTile<QSTile.State> {
         mOnClickUri = intent.getStringExtra("onClickUri");
         mOnLongClick = intent.getParcelableExtra("onLongClick");
         mOnLongClickUri = intent.getStringExtra("onLongClickUri");
+        mOnLaunch = intent.getParcelableExtra("onLaunch");
+        mOnLaunchUri = intent.getStringExtra("onLaunchUri");
         mIntentPackage = intent.getStringExtra("package");
         mIntentPackage = mIntentPackage == null ? "" : mIntentPackage;
     }
 
     @Override
     public int getMetricsCategory() {
-        return MetricsLogger.QS_INTENT;
+        return MetricsEvent.QS_INTENT;
     }
 
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {

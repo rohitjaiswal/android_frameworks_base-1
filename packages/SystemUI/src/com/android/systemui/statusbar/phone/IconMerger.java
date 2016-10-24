@@ -17,6 +17,8 @@
 package com.android.systemui.statusbar.phone;
 
 import android.content.Context;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.util.AttributeSet;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -29,22 +31,37 @@ public class IconMerger extends LinearLayout {
     private static final boolean DEBUG = false;
 
     private int mIconSize;
+    private int mIconHPadding;
+
     private int mClockLocation;
     private View mMoreView;
 
     public IconMerger(Context context, AttributeSet attrs) {
         super(context, attrs);
-
-        mIconSize = context.getResources().getDimensionPixelSize(
-                R.dimen.status_bar_icon_size);
-
+        reloadDimens();
         if (DEBUG) {
             setBackgroundColor(0x800099FF);
         }
     }
 
+    private void reloadDimens() {
+        Resources res = mContext.getResources();
+        mIconSize = res.getDimensionPixelSize(R.dimen.status_bar_icon_size);
+        mIconHPadding = res.getDimensionPixelSize(R.dimen.status_bar_icon_padding);
+    }
+
+    @Override
+    protected void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        reloadDimens();
+    }
+
     public void setOverflowIndicator(View v) {
         mMoreView = v;
+    }
+
+    private int getFullIconWidth() {
+        return mIconSize + 2 * mIconHPadding;
     }
 
     @Override
@@ -54,9 +71,9 @@ public class IconMerger extends LinearLayout {
         int width = getMeasuredWidth();
         if (mClockLocation == ClockController.STYLE_CLOCK_CENTER) {
             int totalWidth = getResources().getDisplayMetrics().widthPixels;
-            width = totalWidth / 2 - mIconSize * 2;
+            width = totalWidth / 2 - getFullIconWidth() * 2;
         }
-        setMeasuredDimension(width - (width % mIconSize), getMeasuredHeight());
+        setMeasuredDimension(width - (width % getFullIconWidth()), getMeasuredHeight());
     }
 
     @Override
@@ -79,11 +96,11 @@ public class IconMerger extends LinearLayout {
             int totalWidth = getResources().getDisplayMetrics().widthPixels;
             if ((mClockLocation != ClockController.STYLE_CLOCK_CENTER &&
                     mClockLocation != ClockController.STYLE_CLOCK_LEFT) ||
-                    (visibleChildren > (totalWidth / mIconSize / 2 + 1))) {
+                    (visibleChildren > (totalWidth / getFullIconWidth() / 2 + 1))) {
                 visibleChildren--;
             }
         }
-        final boolean moreRequired = visibleChildren * mIconSize > width;
+        final boolean moreRequired = visibleChildren * getFullIconWidth() > width;
         if (moreRequired != overflowShown) {
             post(new Runnable() {
                 @Override

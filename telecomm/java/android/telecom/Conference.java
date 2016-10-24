@@ -16,10 +16,12 @@
 
 package android.telecom;
 
+import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.SystemApi;
 import android.os.Bundle;
 import android.telecom.Connection.VideoProvider;
+import android.util.ArraySet;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -56,7 +58,8 @@ public abstract class Conference extends Conferenceable {
         public void onVideoStateChanged(Conference c, int videoState) { }
         public void onVideoProviderChanged(Conference c, Connection.VideoProvider videoProvider) {}
         public void onStatusHintsChanged(Conference conference, StatusHints statusHints) {}
-        public void onExtrasChanged(Conference conference, Bundle extras) {}
+        public void onExtrasChanged(Conference c, Bundle extras) {}
+        public void onExtrasRemoved(Conference c, List<String> keys) {}
     }
 
     private final Set<Listener> mListeners = new CopyOnWriteArraySet<>();
@@ -67,6 +70,7 @@ public abstract class Conference extends Conferenceable {
     private final List<Connection> mUnmodifiableConferenceableConnections =
             Collections.unmodifiableList(mConferenceableConnections);
 
+    private String mTelecomCallId;
     private PhoneAccountHandle mPhoneAccount;
     private CallAudioState mCallAudioState;
     private int mState = Connection.STATE_NEW;
@@ -77,6 +81,8 @@ public abstract class Conference extends Conferenceable {
     private long mConnectTimeMillis = CONNECT_TIME_NOT_SPECIFIED;
     private StatusHints mStatusHints;
     private Bundle mExtras;
+    private Set<String> mPreviousExtraKeys;
+    private final Object mExtrasLock = new Object();
 
     private final Connection.Listener mConnectionDeathListener = new Connection.Listener() {
         @Override
@@ -94,6 +100,26 @@ public abstract class Conference extends Conferenceable {
      */
     public Conference(PhoneAccountHandle phoneAccount) {
         mPhoneAccount = phoneAccount;
+    }
+
+    /**
+     * Returns the telecom internal call ID associated with this conference.
+     *
+     * @return The telecom call ID.
+     * @hide
+     */
+    public final String getTelecomCallId() {
+        return mTelecomCallId;
+    }
+
+    /**
+     * Sets the telecom internal call ID associated with this conference.
+     *
+     * @param telecomCallId The telecom call ID.
+     * @hide
+     */
+    public final void setTelecomCallId(String telecomCallId) {
+        mTelecomCallId = telecomCallId;
     }
 
     /**
@@ -131,6 +157,17 @@ public abstract class Conference extends Conferenceable {
      */
     public final int getConnectionCapabilities() {
         return mConnectionCapabilities;
+    }
+
+    /**
+     * Returns the properties of the conference. See {@code PROPERTY_*} constants in class
+     * {@link Connection} for valid values.
+     *
+     * @return A bitmask of the properties of the conference call.
+     * @hide
+     */
+    public final int getConnectionProperties() {
+        return mConnectionProperties;
     }
 
     /**
@@ -180,32 +217,6 @@ public abstract class Conference extends Conferenceable {
         newCapabilities |= capability;
 
         setConnectionCapabilities(newCapabilities);
-    }
-
-    /**
-     * Returns a bit mask of this conference's properties. See the {@code PROPERTY_*} constants
-     * in the {@link Connection} class.
-     * @hide
-     */
-    public final int getConnectionProperties() {
-        return mConnectionProperties;
-    }
-
-
-    /**
-     * Sets this conference's properties as a bit mask of the {@code PROPERTY_*} constants
-     * in the {@link Connection} class.
-     *
-     * @param connectionProperties The new connection properties.
-     * @hide
-     */
-    public final void setConnectionProperties(int connectionProperties) {
-        if (mConnectionProperties != connectionProperties) {
-            mConnectionProperties = connectionProperties;
-            for (Listener l : mListeners) {
-                l.onConnectionPropertiesChanged(this, mConnectionProperties);
-            }
-        }
     }
 
     /**
@@ -376,7 +387,7 @@ public abstract class Conference extends Conferenceable {
      * Sets the capabilities of a conference. See {@code CAPABILITY_*} constants of class
      * {@link Connection} for valid values.
      *
-     * @param connectionCapabilities A bitmask of the {@code PhoneCapabilities} of the conference call.
+     * @param connectionCapabilities A bitmask of the {@code Capabilities} of the conference call.
      */
     public final void setConnectionCapabilities(int connectionCapabilities) {
         if (connectionCapabilities != mConnectionCapabilities) {
@@ -384,6 +395,23 @@ public abstract class Conference extends Conferenceable {
 
             for (Listener l : mListeners) {
                 l.onConnectionCapabilitiesChanged(this, mConnectionCapabilities);
+            }
+        }
+    }
+
+    /**
+     * Sets the properties of a conference. See {@code PROPERTY_*} constants of class
+     * {@link Connection} for valid values.
+     *
+     * @param connectionProperties A bitmask of the {@code Properties} of the conference call.
+     * @hide
+     */
+    public final void setConnectionProperties(int connectionProperties) {
+        if (connectionProperties != mConnectionProperties) {
+            mConnectionProperties = connectionProperties;
+
+            for (Listener l : mListeners) {
+                l.onConnectionPropertiesChanged(this, mConnectionProperties);
             }
         }
     }
@@ -602,7 +630,6 @@ public abstract class Conference extends Conferenceable {
 
     private void setState(int newState) {
         if (newState != Connection.STATE_ACTIVE &&
-                newState != Connection.STATE_DIALING &&
                 newState != Connection.STATE_HOLDING &&
                 newState != Connection.STATE_DISCONNECTED) {
             Log.w(this, "Unsupported state transition for Conference call.",
@@ -659,23 +686,180 @@ public abstract class Conference extends Conferenceable {
     }
 
     /**
-     * Set some extras that can be associated with this {@code Conference}. No assumptions should
-     * be made as to how an In-Call UI or service will handle these extras.
+     * Replaces all the extras associated with this {@code Conference}.
+     * <p>
+     * New or existing keys are replaced in the {@code Conference} extras.  Keys which are no longer
+     * in the new extras, but were present the last time {@code setExtras} was called are removed.
+     * <p>
+     * No assumptions should be made as to how an In-Call UI or service will handle these extras.
      * Keys should be fully qualified (e.g., com.example.MY_EXTRA) to avoid conflicts.
      *
-     * @param extras The extras associated with this {@code Connection}.
+     * @param extras The extras associated with this {@code Conference}.
      */
     public final void setExtras(@Nullable Bundle extras) {
-        mExtras = extras;
-        for (Listener l : mListeners) {
-            l.onExtrasChanged(this, extras);
+        // Keeping putExtras and removeExtras in the same lock so that this operation happens as a
+        // block instead of letting other threads put/remove while this method is running.
+        synchronized (mExtrasLock) {
+            // Add/replace any new or changed extras values.
+            putExtras(extras);
+            // If we have used "setExtras" in the past, compare the key set from the last invocation
+            // to the current one and remove any keys that went away.
+            if (mPreviousExtraKeys != null) {
+                List<String> toRemove = new ArrayList<String>();
+                for (String oldKey : mPreviousExtraKeys) {
+                    if (extras == null || !extras.containsKey(oldKey)) {
+                        toRemove.add(oldKey);
+                    }
+                }
+
+                if (!toRemove.isEmpty()) {
+                    removeExtras(toRemove);
+                }
+            }
+
+            // Track the keys the last time set called setExtras.  This way, the next time setExtras
+            // is called we can see if the caller has removed any extras values.
+            if (mPreviousExtraKeys == null) {
+                mPreviousExtraKeys = new ArraySet<String>();
+            }
+            mPreviousExtraKeys.clear();
+            if (extras != null) {
+                mPreviousExtraKeys.addAll(extras.keySet());
+            }
         }
     }
 
     /**
-     * @return The extras associated with this conference.
+     * Adds some extras to this {@link Conference}.  Existing keys are replaced and new ones are
+     * added.
+     * <p>
+     * No assumptions should be made as to how an In-Call UI or service will handle these extras.
+     * Keys should be fully qualified (e.g., com.example.MY_EXTRA) to avoid conflicts.
+     *
+     * @param extras The extras to add.
+     * @hide
+     */
+    public final void putExtras(@NonNull Bundle extras) {
+        if (extras == null) {
+            return;
+        }
+
+        // Creating a Bundle clone so we don't have to synchronize on mExtrasLock while calling
+        // onExtrasChanged.
+        Bundle listenersBundle;
+        synchronized (mExtrasLock) {
+            if (mExtras == null) {
+                mExtras = new Bundle();
+            }
+            mExtras.putAll(extras);
+            listenersBundle = new Bundle(mExtras);
+        }
+
+        for (Listener l : mListeners) {
+            l.onExtrasChanged(this, new Bundle(listenersBundle));
+        }
+    }
+
+    /**
+     * Adds a boolean extra to this {@link Conference}.
+     *
+     * @param key The extra key.
+     * @param value The value.
+     * @hide
+     */
+    public final void putExtra(String key, boolean value) {
+        Bundle newExtras = new Bundle();
+        newExtras.putBoolean(key, value);
+        putExtras(newExtras);
+    }
+
+    /**
+     * Adds an integer extra to this {@link Conference}.
+     *
+     * @param key The extra key.
+     * @param value The value.
+     * @hide
+     */
+    public final void putExtra(String key, int value) {
+        Bundle newExtras = new Bundle();
+        newExtras.putInt(key, value);
+        putExtras(newExtras);
+    }
+
+    /**
+     * Adds a string extra to this {@link Conference}.
+     *
+     * @param key The extra key.
+     * @param value The value.
+     * @hide
+     */
+    public final void putExtra(String key, String value) {
+        Bundle newExtras = new Bundle();
+        newExtras.putString(key, value);
+        putExtras(newExtras);
+    }
+
+    /**
+     * Removes an extra from this {@link Conference}.
+     *
+     * @param keys The key of the extra key to remove.
+     * @hide
+     */
+    public final void removeExtras(List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            return;
+        }
+
+        synchronized (mExtrasLock) {
+            if (mExtras != null) {
+                for (String key : keys) {
+                    mExtras.remove(key);
+                }
+            }
+        }
+
+        List<String> unmodifiableKeys = Collections.unmodifiableList(keys);
+        for (Listener l : mListeners) {
+            l.onExtrasRemoved(this, unmodifiableKeys);
+        }
+    }
+
+    /**
+     * Returns the extras associated with this conference.
+     *
+     * @return The extras associated with this connection.
      */
     public final Bundle getExtras() {
         return mExtras;
+    }
+
+    /**
+     * Notifies this {@link Conference} of a change to the extras made outside the
+     * {@link ConnectionService}.
+     * <p>
+     * These extras changes can originate from Telecom itself, or from an {@link InCallService} via
+     * {@link android.telecom.Call#putExtras(Bundle)}, and
+     * {@link Call#removeExtras(List)}.
+     *
+     * @param extras The new extras bundle.
+     * @hide
+     */
+    public void onExtrasChanged(Bundle extras) {}
+
+    /**
+     * Handles a change to extras received from Telecom.
+     *
+     * @param extras The new extras.
+     * @hide
+     */
+    final void handleExtrasChanged(Bundle extras) {
+        Bundle b = null;
+        synchronized (mExtrasLock) {
+            mExtras = extras;
+            if (mExtras != null) {
+                b = new Bundle(mExtras);
+            }
+        }
+        onExtrasChanged(b);
     }
 }

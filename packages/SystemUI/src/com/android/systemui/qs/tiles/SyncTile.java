@@ -16,13 +16,14 @@
 
 package com.android.systemui.qs.tiles;
 
+import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.SyncStatusObserver;
 
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.systemui.R;
 import com.android.systemui.qs.QSTile;
-import org.cyanogenmod.internal.logging.CMMetricsLogger;
 
 /** Quick settings tile: Sync **/
 public class SyncTile extends QSTile<QSTile.BooleanState> {
@@ -35,7 +36,7 @@ public class SyncTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
-    protected BooleanState newTileState() {
+    public BooleanState newTileState() {
         return new BooleanState();
     }
 
@@ -53,9 +54,23 @@ public class SyncTile extends QSTile<QSTile.BooleanState> {
     }
 
     @Override
+    public Intent getLongClickIntent() {
+        return null;
+    }
+
+    @Override
+    public CharSequence getTileLabel() {
+        return mContext.getString(R.string.quick_settings_sync_label);
+    }
+
+    @Override
+    public int getMetricsCategory() {
+        return MetricsEvent.QUICK_SETTINGS;
+    }
+
+    @Override
     protected void handleUpdateState(BooleanState state, Object arg) {
         state.value = ContentResolver.getMasterSyncAutomatically();
-        state.visible = true;
         state.label = mContext.getString(R.string.quick_settings_sync_label);
         if (state.value) {
             state.icon = ResourceIcon.get(R.drawable.ic_qs_sync_on);
@@ -66,11 +81,6 @@ public class SyncTile extends QSTile<QSTile.BooleanState> {
             state.contentDescription =  mContext.getString(
                     R.string.accessibility_quick_settings_sync_off);
         }
-    }
-
-    @Override
-    public int getMetricsCategory() {
-        return CMMetricsLogger.TILE_SYNC;
     }
 
     @Override
@@ -107,3 +117,4 @@ public class SyncTile extends QSTile<QSTile.BooleanState> {
         }
     };
 }
+

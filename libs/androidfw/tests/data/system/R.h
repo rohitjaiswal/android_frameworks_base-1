@@ -22,17 +22,20 @@ namespace R {
 
 namespace attr {
     enum {
-        background      = 0x01010000, // default
-        foreground      = 0x01010001, // default
-        some_dimen      = 0x01010002, // default
-        another_dimen   = 0x01010003, // default
-        windowNoTitle   = 0x01010056, // default
+        background  = 0x01010000, // default
+        foreground  = 0x01010001, // default
     };
 }
 
 namespace style {
     enum {
         Theme_One      = 0x01020000,   // default
+    };
+}
+
+namespace integer {
+    enum {
+        number = 0x01030000, // sv
     };
 }
 

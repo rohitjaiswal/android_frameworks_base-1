@@ -66,9 +66,16 @@ public class Watchdog extends Thread {
 
     // Which native processes to dump into dropbox's stack traces
     public static final String[] NATIVE_STACKS_OF_INTEREST = new String[] {
+        "/system/bin/audioserver",
+        "/system/bin/cameraserver",
+        "/system/bin/drmserver",
+        "/system/bin/mediadrmserver",
         "/system/bin/mediaserver",
         "/system/bin/sdcard",
-        "/system/bin/surfaceflinger"
+        "/system/bin/surfaceflinger",
+        "media.codec",     // system/bin/mediacodec
+        "media.extractor", // system/bin/mediaextractor
+        "com.android.bluetooth",  // Bluetooth service
     };
 
     static Watchdog sWatchdog;
@@ -463,10 +470,6 @@ public class Watchdog extends Thread {
                 dropboxThread.join(2000);  // wait up to 2 seconds for it to return.
             } catch (InterruptedException ignored) {}
 
-            // Trigger the kernel to dump all blocked threads, and backtraces on all CPUs to the kernel log
-            Slog.e(TAG, "Triggering SysRq for system_server watchdog");
-            doSysRq('w');
-            doSysRq('l');
 
             // At times, when user space watchdog traces don't give an indication on
             // which component held a lock, because of which other threads are blocked,
@@ -474,6 +477,12 @@ public class Watchdog extends Thread {
             boolean crashOnWatchdog = SystemProperties
                                         .getBoolean("persist.sys.crashOnWatchdog", false);
             if (crashOnWatchdog) {
+                // Trigger the kernel to dump all blocked threads, and backtraces
+                // on all CPUs to the kernel log
+                Slog.e(TAG, "Triggering SysRq for system_server watchdog");
+                doSysRq('w');
+                doSysRq('l');
+
                 // wait until the above blocked threads be dumped into kernel log
                 SystemClock.sleep(3000);
 

@@ -1,23 +1,43 @@
 LOCAL_PATH:= $(call my-dir)
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := SystemUI-proto-tags
+
+LOCAL_SRC_FILES := $(call all-proto-files-under,src) \
+    src/com/android/systemui/EventLogTags.logtags
+
+LOCAL_PROTOC_OPTIMIZE_TYPE := nano
+LOCAL_PROTO_JAVA_OUTPUT_PARAMS := optional_field_style=accessors
+
+include $(BUILD_STATIC_JAVA_LIBRARY)
+
+# ------------------
+
 include $(CLEAR_VARS)
 
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_SRC_FILES := $(call all-java-files-under, src) \
-    src/com/android/systemui/EventLogTags.logtags
+LOCAL_SRC_FILES := $(call all-java-files-under, src) $(call all-Iaidl-files-under, src)
 
 LOCAL_SRC_FILES += $(call all-java-files-under, ../../../../packages/apps/DUI/src)
 
-LOCAL_STATIC_JAVA_LIBRARIES := Keyguard \
-    org.cyanogenmod.platform.internal \
+LOCAL_STATIC_JAVA_LIBRARIES := \
+    Keyguard \
+    android-support-v7-recyclerview \
+    android-support-v7-preference \
+    android-support-v7-appcompat \
+    android-support-v14-preference \
+    android-support-v17-leanback \
     android-support-v7-palette \
     android-support-v4 \
-    android-opt-cards \
-    trail-drawing \
-    rebound \
-    uicommon
+    framework-protos \
+    SystemUI-proto-tags \
+    org.cyanogenmod.platform.internal \
+	trail-drawing \
+    rebound
 
-LOCAL_JAVA_LIBRARIES := telephony-common org.dirtyunicorns.utils
+LOCAL_JAVA_LIBRARIES := telephony-common telephony-ext org.dirtyunicorns.utils
 LOCAL_FULL_LIBS_MANIFEST_FILES := $(LOCAL_PATH)/AndroidManifest_cm.xml
 
 LOCAL_PACKAGE_NAME := SystemUI
@@ -29,11 +49,16 @@ LOCAL_PROGUARD_FLAG_FILES := proguard.flags
 LOCAL_RESOURCE_DIR := \
     frameworks/base/packages/Keyguard/res \
     $(LOCAL_PATH)/res \
-    $(LOCAL_PATH)/../../../../frameworks/opt/cards/res \
+    frameworks/support/v7/preference/res \
+    frameworks/support/v14/preference/res \
+    frameworks/support/v7/appcompat/res \
+    frameworks/support/v7/recyclerview/res \
+    frameworks/support/v17/leanback/res \
     packages/apps/DUI/res
 
-LOCAL_AAPT_FLAGS := --auto-add-overlay --extra-packages com.android.keyguard
-LOCAL_AAPT_FLAGS += --extra-packages com.android.cards
+LOCAL_AAPT_FLAGS := --auto-add-overlay \
+    --extra-packages com.android.keyguard:android.support.v7.recyclerview:android.support.v7.preference:android.support.v14.preference:android.support.v7.appcompat \
+	--extra-packages android.support.v17.leanback
 
 ifneq ($(SYSTEM_UI_INCREMENTAL_BUILDS),)
     LOCAL_PROGUARD_ENABLED := disabled

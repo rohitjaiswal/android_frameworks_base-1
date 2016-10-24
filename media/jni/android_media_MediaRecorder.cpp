@@ -26,7 +26,6 @@
 #include <utils/Log.h>
 
 #include <gui/Surface.h>
-#include <camera/ICameraService.h>
 #include <camera/Camera.h>
 #include <media/mediarecorder.h>
 #include <media/stagefright/PersistentSurface.h>
@@ -40,7 +39,6 @@
 
 #include <system/audio.h>
 #include <android_runtime/android_view_Surface.h>
-#include "SeempLog.h"
 
 // ----------------------------------------------------------------------------
 
@@ -220,9 +218,7 @@ static void
 android_media_MediaRecorder_setVideoEncoder(JNIEnv *env, jobject thiz, jint ve)
 {
     ALOGV("setVideoEncoder(%d)", ve);
-    if (ve < VIDEO_ENCODER_DEFAULT ||
-            (ve >= VIDEO_ENCODER_LIST_END && ve <= VIDEO_ENCODER_LIST_VENDOR_START) ||
-            ve >= VIDEO_ENCODER_LIST_VENDOR_END) {
+    if (ve < VIDEO_ENCODER_DEFAULT || ve >= VIDEO_ENCODER_LIST_END) {
         jniThrowException(env, "java/lang/IllegalArgumentException", "Invalid video encoder");
         return;
     }
@@ -394,6 +390,14 @@ android_media_MediaRecorder_start(JNIEnv *env, jobject thiz)
 }
 
 static void
+android_media_MediaRecorder_stop(JNIEnv *env, jobject thiz)
+{
+    ALOGV("stop");
+    sp<MediaRecorder> mr = getMediaRecorder(env, thiz);
+    process_media_recorder_call(env, mr->stop(), "java/lang/RuntimeException", "stop failed.");
+}
+
+static void
 android_media_MediaRecorder_pause(JNIEnv *env, jobject thiz)
 {
     ALOGV("pause");
@@ -402,11 +406,11 @@ android_media_MediaRecorder_pause(JNIEnv *env, jobject thiz)
 }
 
 static void
-android_media_MediaRecorder_stop(JNIEnv *env, jobject thiz)
+android_media_MediaRecorder_resume(JNIEnv *env, jobject thiz)
 {
-    ALOGV("stop");
+    ALOGV("resume");
     sp<MediaRecorder> mr = getMediaRecorder(env, thiz);
-    process_media_recorder_call(env, mr->stop(), "java/lang/RuntimeException", "stop failed.");
+    process_media_recorder_call(env, mr->resume(), "java/lang/RuntimeException", "resume failed.");
 }
 
 static void
@@ -521,7 +525,7 @@ void android_media_MediaRecorder_setInputSurface(
 
 // ----------------------------------------------------------------------------
 
-static JNINativeMethod gMethods[] = {
+static const JNINativeMethod gMethods[] = {
     {"setCamera",            "(Landroid/hardware/Camera;)V",    (void *)android_media_MediaRecorder_setCamera},
     {"setVideoSource",       "(I)V",                            (void *)android_media_MediaRecorder_setVideoSource},
     {"setAudioSource",       "(I)V",                            (void *)android_media_MediaRecorder_setAudioSource},
@@ -538,8 +542,9 @@ static JNINativeMethod gMethods[] = {
     {"getSurface",           "()Landroid/view/Surface;",        (void *)android_media_MediaRecorder_getSurface},
     {"getMaxAmplitude",      "()I",                             (void *)android_media_MediaRecorder_native_getMaxAmplitude},
     {"start",                "()V",                             (void *)android_media_MediaRecorder_start},
-    {"pause",                "()V",                             (void *)android_media_MediaRecorder_pause},
     {"stop",                 "()V",                             (void *)android_media_MediaRecorder_stop},
+    {"pause",                "()V",                             (void *)android_media_MediaRecorder_pause},
+    {"resume",               "()V",                             (void *)android_media_MediaRecorder_resume},
     {"native_reset",         "()V",                             (void *)android_media_MediaRecorder_native_reset},
     {"release",              "()V",                             (void *)android_media_MediaRecorder_release},
     {"native_init",          "()V",                             (void *)android_media_MediaRecorder_native_init},

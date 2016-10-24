@@ -26,7 +26,6 @@ import android.net.NetworkQuotaInfo;
 import android.net.NetworkRequest;
 import android.net.NetworkState;
 import android.net.ProxyInfo;
-import android.net.wifi.WifiDevice;
 import android.os.IBinder;
 import android.os.Messenger;
 import android.os.ParcelFileDescriptor;
@@ -37,8 +36,6 @@ import com.android.internal.net.VpnConfig;
 import com.android.internal.net.VpnInfo;
 import com.android.internal.net.VpnProfile;
 
-import java.util.List;
-
 /**
  * Interface that answers queries about, and allows changing, the
  * state of network connectivity.
@@ -47,10 +44,11 @@ import java.util.List;
 interface IConnectivityManager
 {
     Network getActiveNetwork();
+    Network getActiveNetworkForUid(int uid, boolean ignoreBlocked);
     NetworkInfo getActiveNetworkInfo();
-    NetworkInfo getActiveNetworkInfoForUid(int uid);
+    NetworkInfo getActiveNetworkInfoForUid(int uid, boolean ignoreBlocked);
     NetworkInfo getNetworkInfo(int networkType);
-    NetworkInfo getNetworkInfoForNetwork(in Network network);
+    NetworkInfo getNetworkInfoForUid(in Network network, int uid, boolean ignoreBlocked);
     NetworkInfo[] getAllNetworkInfo();
     Network getNetworkForType(int networkType);
     Network[] getAllNetworks();
@@ -79,6 +77,10 @@ interface IConnectivityManager
 
     boolean isTetheringSupported();
 
+    void startTethering(int type, in ResultReceiver receiver, boolean showProvisioningUi);
+
+    void stopTethering(int type);
+
     String[] getTetherableIfaces();
 
     String[] getTetheredIfaces();
@@ -94,8 +96,6 @@ interface IConnectivityManager
     String[] getTetherableBluetoothRegexs();
 
     int setUsbTethering(boolean enable);
-
-    List<WifiDevice> getTetherConnectedSta();
 
     void reportInetCondition(int networkType, int percentage);
 
@@ -122,6 +122,8 @@ interface IConnectivityManager
     VpnInfo[] getAllVpnInfo();
 
     boolean updateLockdownVpn();
+    boolean setAlwaysOnVpnPackage(int userId, String packageName, boolean lockdown);
+    String getAlwaysOnVpnPackage(int userId);
 
     int checkMobileProvisioning(int suggestedTimeOutMs);
 
@@ -170,4 +172,6 @@ interface IConnectivityManager
             in IBinder binder, String srcAddr, int srcPort, String dstAddr);
 
     void stopKeepalive(in Network network, int slot);
+
+    String getCaptivePortalServerUrl();
 }

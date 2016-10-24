@@ -20,12 +20,11 @@ import android.app.PendingIntent;
 import android.bluetooth.BluetoothDevice;
 import android.content.ComponentName;
 import android.media.AudioAttributes;
+import android.media.AudioRecordingConfiguration;
 import android.media.AudioRoutesInfo;
 import android.media.IAudioFocusDispatcher;
 import android.media.IAudioRoutesObserver;
-import android.media.IRemoteControlClient;
-import android.media.IRemoteControlDisplay;
-import android.media.IRemoteVolumeObserver;
+import android.media.IRecordingConfigDispatcher;
 import android.media.IRingtonePlayer;
 import android.media.IVolumeController;
 import android.media.Rating;
@@ -47,8 +46,6 @@ interface IAudioService {
 
     void setStreamVolume(int streamType, int index, int flags, String callingPackage);
 
-    oneway void setRemoteStreamVolume(int index);
-
     boolean isStreamMute(int streamType);
 
     void forceRemoteSubmixFullVolume(boolean startForcing, IBinder cb);
@@ -62,8 +59,6 @@ interface IAudioService {
     int getStreamMinVolume(int streamType);
 
     int getStreamMaxVolume(int streamType);
-
-    void setStreamMaxVolume(int streamType, int maxVol);
 
     int getLastAudibleStreamVolume(int streamType);
 
@@ -123,59 +118,6 @@ interface IAudioService {
 
     int getCurrentAudioFocus();
 
-    /**
-     * Register an IRemoteControlDisplay.
-     * Success of registration is subject to a check on
-     *   the android.Manifest.permission.MEDIA_CONTENT_CONTROL permission.
-     * Notify all IRemoteControlClient of the new display and cause the RemoteControlClient
-     * at the top of the stack to update the new display with its information.
-     * @param rcd the IRemoteControlDisplay to register. No effect if null.
-     * @param w the maximum width of the expected bitmap. Negative or zero values indicate this
-     *   display doesn't need to receive artwork.
-     * @param h the maximum height of the expected bitmap. Negative or zero values indicate this
-     *   display doesn't need to receive artwork.
-     */
-    boolean registerRemoteControlDisplay(in IRemoteControlDisplay rcd, int w, int h);
-
-    /**
-     * Like registerRemoteControlDisplay, but with success being subject to a check on
-     *   the android.Manifest.permission.MEDIA_CONTENT_CONTROL permission, and if it fails,
-     *   success is subject to listenerComp being one of the ENABLED_NOTIFICATION_LISTENERS
-     *   components.
-     */
-    boolean registerRemoteController(in IRemoteControlDisplay rcd, int w, int h,
-            in ComponentName listenerComp);
-
-    /**
-     * Unregister an IRemoteControlDisplay.
-     * No effect if the IRemoteControlDisplay hasn't been successfully registered.
-     * @param rcd the IRemoteControlDisplay to unregister. No effect if null.
-     */
-    oneway void unregisterRemoteControlDisplay(in IRemoteControlDisplay rcd);
-    /**
-     * Update the size of the artwork used by an IRemoteControlDisplay.
-     * @param rcd the IRemoteControlDisplay with the new artwork size requirement
-     * @param w the maximum width of the expected bitmap. Negative or zero values indicate this
-     *   display doesn't need to receive artwork.
-     * @param h the maximum height of the expected bitmap. Negative or zero values indicate this
-     *   display doesn't need to receive artwork.
-     */
-    oneway void remoteControlDisplayUsesBitmapSize(in IRemoteControlDisplay rcd, int w, int h);
-    /**
-     * Controls whether a remote control display needs periodic checks of the RemoteControlClient
-     * playback position to verify that the estimated position has not drifted from the actual
-     * position. By default the check is not performed.
-     * The IRemoteControlDisplay must have been previously registered for this to have any effect.
-     * @param rcd the IRemoteControlDisplay for which the anti-drift mechanism will be enabled
-     *     or disabled. Not null.
-     * @param wantsSync if true, RemoteControlClient instances which expose their playback position
-     *     to the framework will regularly compare the estimated playback position with the actual
-     *     position, and will update the IRemoteControlDisplay implementation whenever a drift is
-     *     detected.
-     */
-    oneway void remoteControlDisplayWantsPlaybackPositionSync(in IRemoteControlDisplay rcd,
-            boolean wantsSync);
-
     void startBluetoothSco(IBinder cb, int targetSdkVersion);
     void startBluetoothScoVirtualCall(IBinder cb);
     void stopBluetoothSco(IBinder cb);
@@ -218,11 +160,15 @@ interface IAudioService {
 
     void setVolumePolicy(in VolumePolicy policy);
 
-    void setRemoteControlClientBrowsedPlayer();
+    void registerRecordingCallback(in IRecordingConfigDispatcher rcdb);
 
-    void getRemoteControlClientNowPlayingEntries();
+    oneway void unregisterRecordingCallback(in IRecordingConfigDispatcher rcdb);
 
-    void setRemoteControlClientPlayItem(long uid, int scope);
+    List<AudioRecordingConfiguration> getActiveRecordingConfigurations();
+
+    void handleHotwordInput(boolean listening);
+
+    String getCurrentHotwordInputPackageName();
 
     void updateRemoteControllerOnExistingMediaPlayers();
 
@@ -230,12 +176,8 @@ interface IAudioService {
 
     void removeMediaPlayerAndUpdateRemoteController(String packageName);
 
-    void handleHotwordInput(boolean listening);
-
-    String getCurrentHotwordInputPackageName();
-
     /**
-     * Internal TeamEos api to protect Pulse
+     * Internal DU api to protect Pulse
      * @hide
      */
     void setVisualizerLocked(boolean doLock);

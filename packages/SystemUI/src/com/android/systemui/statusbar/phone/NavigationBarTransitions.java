@@ -25,7 +25,6 @@ import android.view.View;
 import android.view.animation.AccelerateInterpolator;
 
 import com.android.internal.statusbar.IStatusBarService;
-import com.android.systemui.statusbar.BarTransitions;
 import com.android.systemui.R;
 
 public final class NavigationBarTransitions extends BarTransitions {
@@ -36,10 +35,7 @@ public final class NavigationBarTransitions extends BarTransitions {
     private boolean mLightsOut;
 
     public NavigationBarTransitions(NavigationBarView view) {
-        super(view, R.drawable.nav_background, R.color.navigation_bar_background_opaque,
-                R.color.navigation_bar_background_semi_transparent,
-                R.color.navigation_bar_background_transparent,
-                com.android.internal.R.color.battery_saver_mode_color);
+        super(view, R.drawable.nav_background);
         mView = view;
         mBarService = IStatusBarService.Stub.asInterface(
                 ServiceManager.getService(Context.STATUS_BAR_SERVICE));
@@ -68,42 +64,19 @@ public final class NavigationBarTransitions extends BarTransitions {
         mLightsOut = lightsOut;
 
         final View navButtons = mView.getCurrentView().findViewById(R.id.nav_buttons);
-        final View lowLights = mView.getCurrentView().findViewById(R.id.lights_out);
-        final boolean isBarPulseFaded = mView.isBarPulseFaded();
 
         // ok, everyone, stop it right there
         navButtons.animate().cancel();
-        lowLights.animate().cancel();
 
-        final float navButtonsAlpha = lightsOut ? 0f : isBarPulseFaded ? NavigationBarView.PULSE_ALPHA_FADE : 1f;
-        final float lowLightsAlpha = lightsOut ? 1f : 0f;
+        final float navButtonsAlpha = lightsOut ? 0.5f : 1f;
 
         if (!animate) {
             navButtons.setAlpha(navButtonsAlpha);
-            lowLights.setAlpha(lowLightsAlpha);
-            lowLights.setVisibility(lightsOut ? View.VISIBLE : View.GONE);
         } else {
             final int duration = lightsOut ? LIGHTS_OUT_DURATION : LIGHTS_IN_DURATION;
             navButtons.animate()
                 .alpha(navButtonsAlpha)
                 .setDuration(duration)
-                .start();
-
-            lowLights.setOnTouchListener(mLightsOutListener);
-            if (lowLights.getVisibility() == View.GONE) {
-                lowLights.setAlpha(0f);
-                lowLights.setVisibility(View.VISIBLE);
-            }
-            lowLights.animate()
-                .alpha(lowLightsAlpha)
-                .setDuration(duration)
-                .setInterpolator(new AccelerateInterpolator(2.0f))
-                .setListener(lightsOut ? null : new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(Animator _a) {
-                        lowLights.setVisibility(View.GONE);
-                    }
-                })
                 .start();
         }
     }

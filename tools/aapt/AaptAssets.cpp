@@ -235,7 +235,7 @@ bool AaptLocaleValue::initFromFilterString(const String8& str) {
          setRegion(part2.string());
      } else if (part2.length() == 4 && isAlpha(part2)) {
          setScript(part2.string());
-     } else if (part2.length() >= 5 && part2.length() <= 8) {
+     } else if (part2.length() >= 4 && part2.length() <= 8) {
          setVariant(part2.string());
      } else {
          valid = false;
@@ -250,7 +250,7 @@ bool AaptLocaleValue::initFromFilterString(const String8& str) {
      if (((part3.length() == 2 && isAlpha(part3)) ||
          (part3.length() == 3 && isNumber(part3))) && script[0]) {
          setRegion(part3.string());
-     } else if (part3.length() >= 5 && part3.length() <= 8) {
+     } else if (part3.length() >= 4 && part3.length() <= 8) {
          setVariant(part3.string());
      } else {
          valid = false;
@@ -261,7 +261,7 @@ bool AaptLocaleValue::initFromFilterString(const String8& str) {
      }
 
      const String8& part4 = parts[3];
-     if (part4.length() >= 5 && part4.length() <= 8) {
+     if (part4.length() >= 4 && part4.length() <= 8) {
          setVariant(part4.string());
      } else {
          valid = false;
@@ -280,7 +280,7 @@ int AaptLocaleValue::initFromDirName(const Vector<String8>& parts, const int sta
 
     String8 part = parts[currentIndex];
     if (part[0] == 'b' && part[1] == '+') {
-        // This is a "modified" BCP-47 language tag. Same semantics as BCP-47 tags,
+        // This is a "modified" BCP 47 language tag. Same semantics as BCP 47 tags,
         // except that the separator is "+" and not "-".
         Vector<String8> subtags = AaptUtil::splitAndLowerCase(part, '+');
         subtags.removeItemsAt(0);
@@ -296,8 +296,11 @@ int AaptLocaleValue::initFromDirName(const Vector<String8>& parts, const int sta
                     setRegion(subtags[1]);
                     break;
                 case 4:
-                    setScript(subtags[1]);
-                    break;
+                    if (isAlpha(subtags[1])) {
+                        setScript(subtags[1]);
+                        break;
+                    }
+                    // This is not alphabetical, so we fall through to variant
                 case 5:
                 case 6:
                 case 7:
@@ -305,7 +308,7 @@ int AaptLocaleValue::initFromDirName(const Vector<String8>& parts, const int sta
                     setVariant(subtags[1]);
                     break;
                 default:
-                    fprintf(stderr, "ERROR: Invalid BCP-47 tag in directory name %s\n",
+                    fprintf(stderr, "ERROR: Invalid BCP 47 tag in directory name %s\n",
                             part.string());
                     return -1;
             }
@@ -322,13 +325,13 @@ int AaptLocaleValue::initFromDirName(const Vector<String8>& parts, const int sta
                 setRegion(subtags[1]);
                 hasRegion = true;
             } else {
-                fprintf(stderr, "ERROR: Invalid BCP-47 tag in directory name %s\n", part.string());
+                fprintf(stderr, "ERROR: Invalid BCP 47 tag in directory name %s\n", part.string());
                 return -1;
             }
 
             // The third tag can either be a region code (if the second tag was
             // a script), else a variant code.
-            if (subtags[2].size() > 4) {
+            if (subtags[2].size() >= 4) {
                 setVariant(subtags[2]);
             } else {
                 setRegion(subtags[2]);
@@ -339,7 +342,7 @@ int AaptLocaleValue::initFromDirName(const Vector<String8>& parts, const int sta
             setRegion(subtags[2]);
             setVariant(subtags[3]);
         } else {
-            fprintf(stderr, "ERROR: Invalid BCP-47 tag in directory name: %s\n", part.string());
+            fprintf(stderr, "ERROR: Invalid BCP 47 tag in directory name: %s\n", part.string());
             return -1;
         }
 
@@ -370,7 +373,7 @@ int AaptLocaleValue::initFromDirName(const Vector<String8>& parts, const int sta
 void AaptLocaleValue::initFromResTable(const ResTable_config& config) {
     config.unpackLanguage(language);
     config.unpackRegion(region);
-    if (config.localeScript[0]) {
+    if (config.localeScript[0] && !config.localeScriptWasComputed) {
         memcpy(script, config.localeScript, sizeof(config.localeScript));
     }
 
@@ -1048,23 +1051,8 @@ ssize_t AaptAssets::slurpFromArgs(Bundle* bundle)
                     goto bail;
                 }
                 totalCount += count;
-            } else if (type == kFileTypeRegular) {
-                ZipFile* zip = new ZipFile;
-                status_t err = zip->open(String8(res), ZipFile::kOpenReadOnly);
-                if (err != NO_ERROR) {
-                    fprintf(stderr, "error opening zip file %s\n", res);
-                    delete zip;
-                    totalCount = -1;
-                    goto bail;
-                }
-
-                count = current->slurpResourceZip(bundle, zip, res);
-                delete zip;
-                if (count < 0) {
-                    totalCount = count;
-                    goto bail;
-                }
-            } else {
+            }
+            else {
                 fprintf(stderr, "ERROR: '%s' is not a directory\n", res);
                 return UNKNOWN_ERROR;
             }
@@ -1229,89 +1217,95 @@ bail:
 }
 
 ssize_t
-AaptAssets::slurpResourceZip(Bundle* bundle, ZipFile* zip, const char* fullZipPath)
+AaptAssets::slurpResourceZip(Bundle* /* bundle */, const char* filename)
 {
-    status_t err = NO_ERROR;
     int count = 0;
     SortedVector<AaptGroupEntry> entries;
+
+    ZipFile* zip = new ZipFile;
+    status_t err = zip->open(filename, ZipFile::kOpenReadOnly);
+    if (err != NO_ERROR) {
+        fprintf(stderr, "error opening zip file %s\n", filename);
+        count = err;
+        delete zip;
+        return -1;
+    }
 
     const int N = zip->getNumEntries();
     for (int i=0; i<N; i++) {
         ZipEntry* entry = zip->getEntryByIndex(i);
-
-        if (!isEntryValid(bundle, entry)) {
+        if (entry->getDeleted()) {
             continue;
         }
 
-        String8 entryName(entry->getFileName()); //ex: /res/drawable/foo.png
-        String8 entryLeaf = entryName.getPathLeaf(); //ex: foo.png
-        String8 entryDirFull = entryName.getPathDir(); //ex: res/drawable
-        String8 entryDir = entryDirFull.getPathLeaf(); //ex: drawable
+        String8 entryName(entry->getFileName());
 
-        err = addEntry(entryName, entryLeaf, entryDirFull, entryDir, String8(fullZipPath), 0);
-        if (err) continue;
+        String8 dirName = entryName.getPathDir();
+        sp<AaptDir> dir = dirName == "" ? this : makeDir(dirName);
+
+        String8 resType;
+        AaptGroupEntry kind;
+
+        String8 remain;
+        if (entryName.walkPath(&remain) == kResourceDir) {
+            // these are the resources, pull their type out of the directory name
+            kind.initFromDirName(remain.walkPath().string(), &resType);
+        } else {
+            // these are untyped and don't have an AaptGroupEntry
+        }
+        if (entries.indexOf(kind) < 0) {
+            entries.add(kind);
+            mGroupEntries.add(kind);
+        }
+
+        // use the one from the zip file if they both exist.
+        dir->removeFile(entryName.getPathLeaf());
+
+        sp<AaptFile> file = new AaptFile(entryName, kind, resType);
+        status_t err = dir->addLeafFile(entryName.getPathLeaf(), file);
+        if (err != NO_ERROR) {
+            fprintf(stderr, "err=%s entryName=%s\n", strerror(err), entryName.string());
+            count = err;
+            goto bail;
+        }
+        file->setCompressionMethod(entry->getCompressionMethod());
+
+#if 0
+        if (entryName == "AndroidManifest.xml") {
+            printf("AndroidManifest.xml\n");
+        }
+        printf("\n\nfile: %s\n", entryName.string());
+#endif
+
+        size_t len = entry->getUncompressedLen();
+        void* data = zip->uncompress(entry);
+        void* buf = file->editData(len);
+        memcpy(buf, data, len);
+
+#if 0
+        const int OFF = 0;
+        const unsigned char* p = (unsigned char*)data;
+        const unsigned char* end = p+len;
+        p += OFF;
+        for (int i=0; i<32 && p < end; i++) {
+            printf("0x%03x ", i*0x10 + OFF);
+            for (int j=0; j<0x10 && p < end; j++) {
+                printf(" %02x", *p);
+                p++;
+            }
+            printf("\n");
+        }
+#endif
+
+        free(data);
 
         count++;
     }
 
+bail:
+    delete zip;
     return count;
 }
-
-status_t
-AaptAssets::addEntry(const String8& entryName, const String8& entryLeaf,
-                         const String8& /* entryDirFull */, const String8& entryDir,
-                         const String8& zipFile, int compressionMethod)
-{
-    AaptGroupEntry group;
-    String8 resType;
-    bool b = group.initFromDirName(entryDir, &resType);
-    if (!b) {
-        fprintf(stderr, "invalid resource directory name: %s\n", entryDir.string());
-        return -1;
-    }
-
-    //This will do a cached lookup as well
-    sp<AaptDir> dir = makeDir(resType); //Does lookup as well on mdirs
-    sp<AaptFile> file = new AaptFile(entryName, group, resType, zipFile);
-    file->setCompressionMethod(compressionMethod);
-
-    dir->addLeafFile(entryLeaf, file);
-
-    sp<AaptDir> rdir = resDir(resType);
-    if (rdir == NULL) {
-        mResDirs.add(dir);
-    }
-
-    return NO_ERROR;
-}
-
-bool AaptAssets::isEntryValid(Bundle* bundle, ZipEntry* entry) {
-    if (entry == NULL) {
-        return false;
-    }
-
-    if (entry->getDeleted()) {
-        return false;
-    }
-
-    // Entries that are not inside the internal zip path can be ignored
-    if (bundle->getInternalZipPath()) {
-        bool prefixed = (strncmp(entry->getFileName(),
-                bundle->getInternalZipPath(),
-                strlen(bundle->getInternalZipPath())) == 0);
-        if (!prefixed) {
-            return false;
-        }
-    }
-
-    //Do not process directories
-    if (String8(entry->getFileName()).size() == 0) {
-       return false;
-    }
-
-    return true;
-}
-
 
 status_t AaptAssets::filter(Bundle* bundle)
 {
@@ -1539,7 +1533,7 @@ status_t AaptAssets::buildIncludedResources(Bundle* bundle)
             printf("Including resources from package: %s\n", includes[i].string());
         }
 
-        if (!mIncludedAssets.addAssetPath(includes[i], 0)) {
+        if (!mIncludedAssets.addAssetPath(includes[i], NULL)) {
             fprintf(stderr, "ERROR: Asset package include '%s' not found.\n",
                     includes[i].string());
             return UNKNOWN_ERROR;
