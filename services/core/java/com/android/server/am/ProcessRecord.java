@@ -97,11 +97,14 @@ final class ProcessRecord {
     int verifiedAdj;            // The last adjustment that was verified as actually being set
     int curSchedGroup;          // Currently desired scheduling class
     int setSchedGroup;          // Last set to background scheduling class
+    int vrThreadTid;            // Thread currently set for VR scheduling
     int trimMemoryLevel;        // Last selected memory trimming level
     int curProcState = PROCESS_STATE_NONEXISTENT; // Currently computed process state
     int repProcState = PROCESS_STATE_NONEXISTENT; // Last reported process state
     int setProcState = PROCESS_STATE_NONEXISTENT; // Last set process state in process tracker
     int pssProcState = PROCESS_STATE_NONEXISTENT; // Currently requesting pss for
+    int savedPriority;          // Previous priority value if we're switching to non-SCHED_OTHER
+    int renderThreadTid;        // TID for RenderThread
     boolean serviceb;           // Process currently is on the service B list
     boolean serviceHighRam;     // We are forcing to service B list due to its RAM use
     boolean setIsForeground;    // Running foreground UI when last set?
@@ -113,6 +116,8 @@ final class ProcessRecord {
     boolean repForegroundActivities; // Last reported foreground activities.
     boolean systemNoUi;         // This is a system process, but not currently showing UI.
     boolean hasShownUi;         // Has UI been shown in this process since it was started?
+    boolean hasTopUi;           // Is this process currently showing "top-level" UI that is not an
+                                // activity?
     boolean pendingUiClean;     // Want to clean up resources from showing UI?
     boolean hasAboveClient;     // Bound using BIND_ABOVE_CLIENT, so want to be lower
     boolean treatLikeActivity;  // Bound using BIND_TREAT_LIKE_ACTIVITY
@@ -138,7 +143,7 @@ final class ProcessRecord {
     Bundle instrumentationArguments;// as given to us
     ComponentName instrumentationResultClass;// copy of instrumentationClass
     boolean usingWrapper;       // Set to true when process was launched with a wrapper attached
-    BroadcastRecord curReceiver;// receiver currently running in the app
+    final ArraySet<BroadcastRecord> curReceivers = new ArraySet<BroadcastRecord>();// receivers currently running in the app
     long lastWakeTime;          // How long proc held wake lock at last check
     long lastCpuTime;           // How long proc has run CPU at last check
     long curCpuTime;            // How long proc has run CPU most recently
@@ -293,6 +298,7 @@ final class ProcessRecord {
                 pw.print(" setSchedGroup="); pw.print(setSchedGroup);
                 pw.print(" systemNoUi="); pw.print(systemNoUi);
                 pw.print(" trimMemoryLevel="); pw.println(trimMemoryLevel);
+        pw.print(prefix); pw.print("vrThreadTid="); pw.print(vrThreadTid);
         pw.print(prefix); pw.print("curProcState="); pw.print(curProcState);
                 pw.print(" repProcState="); pw.print(repProcState);
                 pw.print(" pssProcState="); pw.print(pssProcState);
@@ -421,14 +427,20 @@ final class ProcessRecord {
                 pw.print(prefix); pw.print("  - "); pw.println(conProviders.get(i).toShortString());
             }
         }
-        if (curReceiver != null) {
-            pw.print(prefix); pw.print("curReceiver="); pw.println(curReceiver);
+        if (!curReceivers.isEmpty()) {
+            pw.print(prefix); pw.println("Current Receivers:");
+            for (int i=0; i < curReceivers.size(); i++) {
+                pw.print(prefix); pw.print("  - "); pw.println(curReceivers.valueAt(i));
+            }
         }
         if (receivers.size() > 0) {
             pw.print(prefix); pw.println("Receivers:");
             for (int i=0; i<receivers.size(); i++) {
                 pw.print(prefix); pw.print("  - "); pw.println(receivers.valueAt(i));
             }
+        }
+        if (hasTopUi) {
+            pw.print(prefix); pw.print("hasTopUi="); pw.print(hasTopUi);
         }
     }
 

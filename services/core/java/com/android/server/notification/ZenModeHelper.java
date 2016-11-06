@@ -54,7 +54,6 @@ import android.service.notification.ZenModeConfig;
 import android.service.notification.ZenModeConfig.EventInfo;
 import android.service.notification.ZenModeConfig.ScheduleInfo;
 import android.service.notification.ZenModeConfig.ZenRule;
-import android.text.TextUtils;
 import android.util.AndroidRuntimeException;
 import android.util.Log;
 import android.util.SparseArray;
@@ -108,6 +107,7 @@ public class ZenModeHelper {
     private PackageManager mPm;
     private long mSuppressedEffects;
     private boolean mAllowLights;
+    private int mVibrationMode;
 
     public static final long SUPPRESSED_EFFECT_NOTIFICATIONS = 1;
     public static final long SUPPRESSED_EFFECT_CALLS = 1 << 1;
@@ -140,17 +140,22 @@ public class ZenModeHelper {
         return TAG;
     }
 
-    public boolean matchesCallFilter(UserHandle userHandle, Bundle extras,
+    public boolean[] matchesCallFilter(UserHandle userHandle, Bundle extras,
             ValidateNotificationPeople validator, int contactsTimeoutMs, float timeoutAffinity) {
         synchronized (mConfig) {
-            return ZenModeFiltering.matchesCallFilter(mContext, mZenMode, mConfig, userHandle,
-                    extras,
-                    validator, contactsTimeoutMs, timeoutAffinity);
+            boolean matches = ZenModeFiltering.matchesCallFilter(mContext, mZenMode, mConfig,
+                    userHandle, extras, validator, contactsTimeoutMs, timeoutAffinity);
+            boolean matchesForVibration = matches || allowVibrationForCalls();
+            return new boolean[] { matches, matchesForVibration };
         }
     }
 
     public boolean isCall(NotificationRecord record) {
         return mFiltering.isCall(record);
+    }
+
+    public void recordCaller(NotificationRecord record) {
+        mFiltering.recordCall(record);
     }
 
     public boolean shouldIntercept(NotificationRecord record) {
@@ -233,7 +238,7 @@ public class ZenModeHelper {
     public void requestFromListener(ComponentName name, int filter) {
         final int newZen = NotificationManager.zenModeFromInterruptionFilter(filter, -1);
         if (newZen != -1) {
-            setManualZenMode(newZen, null,
+            setManualZenMode(newZen, null, name != null ? name.getPackageName() : null,
                     "listener:" + (name != null ? name.flattenToShortString() : null));
         }
     }
@@ -456,11 +461,11 @@ public class ZenModeHelper {
                 rule.creationTime);
     }
 
-    public void setManualZenMode(int zenMode, Uri conditionId, String reason) {
-        setManualZenMode(zenMode, conditionId, reason, true /*setRingerMode*/);
+    public void setManualZenMode(int zenMode, Uri conditionId, String caller, String reason) {
+        setManualZenMode(zenMode, conditionId, reason, caller, true /*setRingerMode*/);
     }
 
-    private void setManualZenMode(int zenMode, Uri conditionId, String reason,
+    private void setManualZenMode(int zenMode, Uri conditionId, String reason, String caller,
             boolean setRingerMode) {
         ZenModeConfig newConfig;
         synchronized (mConfig) {
@@ -482,6 +487,7 @@ public class ZenModeHelper {
                 newRule.enabled = true;
                 newRule.zenMode = zenMode;
                 newRule.conditionId = conditionId;
+                newRule.enabler = caller;
                 newConfig.manualRule = newRule;
             }
             setConfigLocked(newConfig, reason, setRingerMode);
@@ -502,6 +508,8 @@ public class ZenModeHelper {
         }
 
         pw.print(prefix); pw.print("mSuppressedEffects="); pw.println(mSuppressedEffects);
+        pw.print(prefix); pw.print("mAllowLights="); pw.println(mAllowLights);
+        pw.print(prefix); pw.print("mVibrationMode="); pw.println(mVibrationMode);
         mFiltering.dump(pw, prefix);
         mConditions.dump(pw, prefix);
     }
@@ -693,6 +701,7 @@ public class ZenModeHelper {
         mZenMode = zen;
         updateRingerModeAffectedStreams();
         readAllowLightsFromSettings();
+        readVibrationModeFromSettings();
         setZenModeSetting(mZenMode);
         if (setRingerMode) {
             applyZenToRingerMode();
@@ -742,6 +751,21 @@ public class ZenModeHelper {
                    CMSettings.System.ZEN_PRIORITY_ALLOW_LIGHTS, 1) == 1;
                 break;
         }
+    }
+
+    public boolean allowVibrationForCalls() {
+        return mVibrationMode > 0;
+    }
+
+    public boolean allowVibrationForNotifications() {
+        return mVibrationMode > 1;
+    }
+
+    public void readVibrationModeFromSettings() {
+        final ContentResolver cr = mContext.getContentResolver();
+        mVibrationMode = mZenMode == Global.ZEN_MODE_IMPORTANT_INTERRUPTIONS
+                ? CMSettings.System.getInt(cr, CMSettings.System.ZEN_PRIORITY_VIBRATION_MODE, 0)
+                : 0;
     }
 
     private void applyRestrictions() {
@@ -975,7 +999,8 @@ public class ZenModeHelper {
                     break;
             }
             if (newZen != -1) {
-                setManualZenMode(newZen, null, "ringerModeInternal", false /*setRingerMode*/);
+                setManualZenMode(newZen, null, "ringerModeInternal", null,
+                        false /*setRingerMode*/);
             }
 
             if (isChange || newZen != -1 || ringerModeExternal != ringerModeExternalOut) {
@@ -1013,7 +1038,8 @@ public class ZenModeHelper {
                     break;
             }
             if (newZen != -1) {
-                setManualZenMode(newZen, null, "ringerModeExternal", false /*setRingerMode*/);
+                setManualZenMode(newZen, null, "ringerModeExternal", caller,
+                        false /*setRingerMode*/);
             }
 
             ZenLog.traceSetRingerModeExternal(ringerModeOld, ringerModeNew, caller,
@@ -1048,9 +1074,11 @@ public class ZenModeHelper {
     private final class SettingsObserver extends ContentObserver {
         private final Uri ZEN_MODE = Global.getUriFor(Global.ZEN_MODE);
         private final Uri ZEN_ALLOW_LIGHTS = CMSettings.System.getUriFor(
-                                               CMSettings.System.ZEN_ALLOW_LIGHTS);
+                CMSettings.System.ZEN_ALLOW_LIGHTS);
         private final Uri ZEN_PRIORITY_ALLOW_LIGHTS = CMSettings.System.getUriFor(
-                                               CMSettings.System.ZEN_PRIORITY_ALLOW_LIGHTS);
+                CMSettings.System.ZEN_PRIORITY_ALLOW_LIGHTS);
+        private final Uri ZEN_PRIORITY_VIBRATION_MODE = CMSettings.System.getUriFor(
+                CMSettings.System.ZEN_PRIORITY_VIBRATION_MODE);
 
         public SettingsObserver(Handler handler) {
             super(handler);
@@ -1063,6 +1091,8 @@ public class ZenModeHelper {
                      ZEN_ALLOW_LIGHTS, false /*notifyForDescendents*/, this);
             resolver.registerContentObserver(
                      ZEN_PRIORITY_ALLOW_LIGHTS, false /*notifyForDescendents*/, this);
+            resolver.registerContentObserver(
+                     ZEN_PRIORITY_VIBRATION_MODE, false /*notifyForDescendents*/, this);
             update(null);
         }
 
@@ -1079,6 +1109,8 @@ public class ZenModeHelper {
                 }
             } else if (ZEN_ALLOW_LIGHTS.equals(uri) || ZEN_PRIORITY_ALLOW_LIGHTS.equals(uri)) {
                 readAllowLightsFromSettings();
+            } else if (ZEN_PRIORITY_VIBRATION_MODE.equals(uri)) {
+                readVibrationModeFromSettings();
             }
         }
     }

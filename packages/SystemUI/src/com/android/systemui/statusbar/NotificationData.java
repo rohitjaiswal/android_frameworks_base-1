@@ -34,8 +34,9 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Map;
 import java.util.Objects;
+
+import static android.service.notification.NotificationListenerService.Ranking.importanceToLevel;
 
 /**
  * The list of currently displaying notifications.
@@ -206,14 +207,14 @@ public class NotificationData {
 
             // IMPORTANCE_MIN media streams are allowed to drift to the bottom
             final boolean aMedia = a.key.equals(mediaNotification)
-                    && aImportance > Ranking.IMPORTANCE_MIN;
+                    && importanceToLevel(aImportance) > importanceToLevel(Ranking.IMPORTANCE_MIN);
             final boolean bMedia = b.key.equals(mediaNotification)
-                    && bImportance > Ranking.IMPORTANCE_MIN;
+                    && importanceToLevel(bImportance) > importanceToLevel(Ranking.IMPORTANCE_MIN);
 
-            boolean aSystemMax = aImportance >= Ranking.IMPORTANCE_MAX &&
-                    isSystemNotification(na);
-            boolean bSystemMax = bImportance >= Ranking.IMPORTANCE_MAX &&
-                    isSystemNotification(nb);
+            boolean aSystemMax = importanceToLevel(aImportance) >= importanceToLevel(Ranking.IMPORTANCE_MAX)
+                    && isSystemNotification(na);
+            boolean bSystemMax = importanceToLevel(bImportance) >= importanceToLevel(Ranking.IMPORTANCE_MAX)
+                    && isSystemNotification(nb);
 
             boolean isHeadsUp = a.row.isHeadsUp();
             if (isHeadsUp != b.row.isHeadsUp()) {
@@ -343,7 +344,6 @@ public class NotificationData {
                         entry.notification.setOverrideGroupKey(overrideGroupKey);
                         mGroupManager.onEntryUpdated(entry, oldSbn);
                     }
-                    //mGroupManager.onEntryBundlingUpdated(entry, getOverrideGroupKey(entry.key));
                 }
             }
         }

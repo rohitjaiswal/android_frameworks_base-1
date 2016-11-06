@@ -82,11 +82,6 @@
 
         <!-- other weird signal stuff -->
 
-        <com.android.systemui.tuner.BatteryPreference
-            android:title="@string/battery"
-            android:summary="%s"
-            android:entries="@array/battery_options" />
-
         <com.android.systemui.tuner.StatusBarSwitch
             android:key="alarm_clock"
             android:title="@string/status_bar_alarm" />
@@ -99,13 +94,6 @@
             android:entries="@array/clock_options" />
 
     </PreferenceScreen>
-
-    <!--
-    <Preference
-        android:key="color_transform"
-        android:title="@string/color_and_appearance"
-        android:fragment="com.android.systemui.tuner.ColorAndAppearanceFragment" />
-    -->
 
     <PreferenceScreen
         android:key="volume_and_do_not_disturb"
