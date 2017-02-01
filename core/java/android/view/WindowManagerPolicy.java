@@ -90,6 +90,7 @@ public interface WindowManagerPolicy {
 
     public final static int FLAG_INTERACTIVE = 0x20000000;
     public final static int FLAG_PASS_TO_USER = 0x40000000;
+    public final static int POLICY_FLAG_REMOVE_HANDYMODE = 0x80000000;
 
     // Flags for IActivityManager.keyguardGoingAway()
     public final static int KEYGUARD_GOING_AWAY_FLAG_TO_SHADE = 1 << 0;
@@ -508,6 +509,11 @@ public interface WindowManagerPolicy {
          */
         void getStackBounds(int stackId, Rect outBounds);
 
+        /**
+         * Overrides all currently playing app animations with {@param a}.
+         */
+        void overridePlayingAppAnimationsLw(Animation a);
+
         void addSystemUIVisibilityFlag(int flags);
     }
 
@@ -721,6 +727,11 @@ public interface WindowManagerPolicy {
      * Return the window that is hiding the keyguard, if such a thing exists.
      */
     public WindowState getWinShowWhenLockedLw();
+
+    /**
+     * Returns the current keyguard panel, if such a thing exists.
+     */
+    public WindowState getWinKeyguardPanelLw();
 
     /**
      * Called when the system would like to show a UI to indicate that an
@@ -1303,6 +1314,16 @@ public interface WindowManagerPolicy {
     public int adjustSystemUiVisibilityLw(int visibility);
 
     /**
+     * Called by System UI to notify of changes to the visibility of Recents.
+     */
+    public void setRecentsVisibilityLw(boolean visible);
+
+    /**
+     * Called by System UI to notify of changes to the visibility of PIP.
+     */
+    public void setTvPipVisibilityLw(boolean visible);
+
+    /**
      * Specifies whether there is an on-screen navigation bar separate from the status bar.
      */
     public boolean hasNavigationBar();
@@ -1428,4 +1449,11 @@ public interface WindowManagerPolicy {
     public void onConfigurationChanged();
 
     public boolean shouldRotateSeamlessly(int oldRotation, int newRotation);
+
+    /**
+     * Lock the device orientation to the specified rotation,
+     * Sensor input or hdmi will be ignored until
+     * freezeOrThawRotation(-1) is called or reboot the devcie.
+     */
+    public void freezeOrThawRotation(int rotation);
 }

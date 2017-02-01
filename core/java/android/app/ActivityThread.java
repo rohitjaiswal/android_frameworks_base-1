@@ -48,6 +48,7 @@ import android.database.sqlite.SQLiteDebug;
 import android.database.sqlite.SQLiteDebug.DbStats;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Typeface;
 import android.hardware.display.DisplayManagerGlobal;
 import android.net.ConnectivityManager;
 import android.net.IConnectivityManager;
@@ -108,6 +109,7 @@ import android.renderscript.RenderScriptCacheDir;
 import android.system.Os;
 import android.system.OsConstants;
 import android.system.ErrnoException;
+import android.webkit.WebView;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.app.IVoiceInteractor;
@@ -433,8 +435,10 @@ public final class ActivityThread {
     static final class NewIntentData {
         List<ReferrerIntent> intents;
         IBinder token;
+        boolean andPause;
         public String toString() {
-            return "NewIntentData{intents=" + intents + " token=" + token + "}";
+            return "NewIntentData{intents=" + intents + " token=" + token
+                    + " andPause=" + andPause +"}";
         }
     }
 
@@ -751,10 +755,12 @@ public final class ActivityThread {
                     configChanges, notResumed, config, overrideConfig, true, preserveWindow);
         }
 
-        public final void scheduleNewIntent(List<ReferrerIntent> intents, IBinder token) {
+        public final void scheduleNewIntent(
+                List<ReferrerIntent> intents, IBinder token, boolean andPause) {
             NewIntentData data = new NewIntentData();
             data.intents = intents;
             data.token = token;
+            data.andPause = andPause;
 
             sendMessage(H.NEW_INTENT, data);
         }
@@ -890,6 +896,14 @@ public final class ActivityThread {
         public void scheduleConfigurationChanged(Configuration config) {
             updatePendingConfiguration(config);
             sendMessage(H.CONFIGURATION_CHANGED, config);
+        }
+
+        public void scheduleAssetsChanged(@NonNull final String packageName,
+                @NonNull final ApplicationInfo ai) {
+            final SomeArgs args = SomeArgs.obtain();
+            args.arg1 = packageName;
+            args.arg2 = ai;
+            sendMessage(H.ASSETS_CHANGED, args);
         }
 
         public void updateTimeZone() {
@@ -1037,10 +1051,21 @@ public final class ActivityThread {
             long dalvikMax = runtime.totalMemory() / 1024;
             long dalvikFree = runtime.freeMemory() / 1024;
             long dalvikAllocated = dalvikMax - dalvikFree;
+
+            Class[] classesToCount = new Class[] {
+                    ContextImpl.class,
+                    Activity.class,
+                    WebView.class,
+                    OpenSSLSocketImpl.class
+            };
+            long[] instanceCounts = VMDebug.countInstancesOfClasses(classesToCount, true);
+            long appContextInstanceCount = instanceCounts[0];
+            long activityInstanceCount = instanceCounts[1];
+            long webviewInstanceCount = instanceCounts[2];
+            long openSslSocketCount = instanceCounts[3];
+
             long viewInstanceCount = ViewDebug.getViewInstanceCount();
             long viewRootInstanceCount = ViewDebug.getViewRootImplCount();
-            long appContextInstanceCount = Debug.countInstancesOfClass(ContextImpl.class);
-            long activityInstanceCount = Debug.countInstancesOfClass(Activity.class);
             int globalAssetCount = AssetManager.getGlobalAssetCount();
             int globalAssetManagerCount = AssetManager.getGlobalAssetManagerCount();
             int binderLocalObjectCount = Debug.getBinderLocalObjectCount();
@@ -1048,7 +1073,6 @@ public final class ActivityThread {
             int binderDeathObjectCount = Debug.getBinderDeathObjectCount();
             long parcelSize = Parcel.getGlobalAllocSize();
             long parcelCount = Parcel.getGlobalAllocCount();
-            long openSslSocketCount = Debug.countInstancesOfClass(OpenSSLSocketImpl.class);
             SQLiteDebug.PagerStats stats = SQLiteDebug.getDatabaseInfo();
 
             dumpMemInfoTable(pw, memInfo, checkin, dumpFullInfo, dumpDalvik, dumpSummaryOnly,
@@ -1111,6 +1135,7 @@ public final class ActivityThread {
                     "Parcel count:", parcelCount);
             printRow(pw, TWO_COUNT_COLUMNS, "Death Recipients:", binderDeathObjectCount,
                     "OpenSSL Sockets:", openSslSocketCount);
+            printRow(pw, ONE_COUNT_COLUMN, "WebViews:", webviewInstanceCount);
 
             // SQLite mem info
             pw.println(" ");
@@ -1389,6 +1414,7 @@ public final class ActivityThread {
         public static final int MULTI_WINDOW_MODE_CHANGED = 152;
         public static final int PICTURE_IN_PICTURE_MODE_CHANGED = 153;
         public static final int LOCAL_VOICE_INTERACTION_STARTED = 154;
+        public static final int ASSETS_CHANGED = 155;
 
         String codeToString(int code) {
             if (DEBUG_MESSAGES) {
@@ -1445,6 +1471,7 @@ public final class ActivityThread {
                     case MULTI_WINDOW_MODE_CHANGED: return "MULTI_WINDOW_MODE_CHANGED";
                     case PICTURE_IN_PICTURE_MODE_CHANGED: return "PICTURE_IN_PICTURE_MODE_CHANGED";
                     case LOCAL_VOICE_INTERACTION_STARTED: return "LOCAL_VOICE_INTERACTION_STARTED";
+                    case ASSETS_CHANGED: return "ASSETS_CHANGED";
                 }
             }
             return Integer.toString(code);
@@ -1699,6 +1726,10 @@ public final class ActivityThread {
                 case LOCAL_VOICE_INTERACTION_STARTED:
                     handleLocalVoiceInteractionStarted((IBinder) ((SomeArgs) msg.obj).arg1,
                             (IVoiceInteractor) ((SomeArgs) msg.obj).arg2);
+                    break;
+                case ASSETS_CHANGED:
+                    handleAssetsChanged((String)((SomeArgs)msg.obj).arg1,
+                            (ApplicationInfo)((SomeArgs)msg.obj).arg2);
                     break;
             }
             Object obj = msg.obj;
@@ -2787,24 +2818,34 @@ public final class ActivityThread {
         }
     }
 
-    public final void performNewIntents(IBinder token, List<ReferrerIntent> intents) {
-        ActivityClientRecord r = mActivities.get(token);
-        if (r != null) {
-            final boolean resumed = !r.paused;
-            if (resumed) {
-                r.activity.mTemporaryPause = true;
-                mInstrumentation.callActivityOnPause(r.activity);
-            }
-            deliverNewIntents(r, intents);
-            if (resumed) {
-                r.activity.performResume();
-                r.activity.mTemporaryPause = false;
-            }
+    void performNewIntents(IBinder token, List<ReferrerIntent> intents, boolean andPause) {
+        final ActivityClientRecord r = mActivities.get(token);
+        if (r == null) {
+            return;
+        }
+
+        final boolean resumed = !r.paused;
+        if (resumed) {
+            r.activity.mTemporaryPause = true;
+            mInstrumentation.callActivityOnPause(r.activity);
+        }
+        deliverNewIntents(r, intents);
+        if (resumed) {
+            r.activity.performResume();
+            r.activity.mTemporaryPause = false;
+        }
+
+        if (r.paused && andPause) {
+            // In this case the activity was in the paused state when we delivered the intent,
+            // to guarantee onResume gets called after onNewIntent we temporarily resume the
+            // activity and pause again as the caller wanted.
+            performResumeActivity(token, false, "performNewIntents");
+            performPauseActivityIfNeeded(r, "performNewIntents");
         }
     }
 
     private void handleNewIntent(NewIntentData data) {
-        performNewIntents(data.token, data.intents);
+        performNewIntents(data.token, data.intents, data.andPause);
     }
 
     public void handleRequestAssistContextExtras(RequestAssistContextExtras cmd) {
@@ -3785,7 +3826,7 @@ public final class ActivityThread {
      * than our client -- for the server, stop means to save state and give
      * it the result when it is done, but the window may still be visible.
      * For the client, we want to call onStop()/onStart() to indicate when
-     * the activity's UI visibillity changes.
+     * the activity's UI visibility changes.
      */
     private void performStopActivityInner(ActivityClientRecord r,
             StopInfo info, boolean keepShown, boolean saveState, String reason) {
@@ -3959,6 +4000,9 @@ public final class ActivityThread {
         mSomeActivitiesChanged = true;
     }
 
+    // TODO: This method should be changed to use {@link #performStopActivityInner} to perform to
+    // stop operation on the activity to reduce code duplication and the chance of fixing a bug in
+    // one place and missing the other.
     private void handleSleeping(IBinder token, boolean sleeping) {
         ActivityClientRecord r = mActivities.get(token);
 
@@ -3969,6 +4013,10 @@ public final class ActivityThread {
 
         if (sleeping) {
             if (!r.stopped && !r.isPreHoneycomb()) {
+                if (!r.activity.mFinished && r.state == null) {
+                    callCallActivityOnSaveInstanceState(r);
+                }
+
                 try {
                     // Now we are idle.
                     r.activity.performStop(false /*preserveWindow*/);
@@ -4770,12 +4818,47 @@ public final class ActivityThread {
         }
     }
 
+    final void handleAssetsChanged(@NonNull final String packageToUpdate,
+            @NonNull final ApplicationInfo ai) {
+        synchronized (mResourcesManager) {
+            // Update all affected loaded packages with new overlay package information
+            final ArrayList<WeakReference<LoadedApk>> loadedPackages = new ArrayList<>();
+            loadedPackages.addAll(mPackages.values());
+            loadedPackages.addAll(mResourcePackages.values());
+            for (final WeakReference<LoadedApk> ref : loadedPackages) {
+                final LoadedApk apk = ref.get();
+                if (apk != null) {
+                    final String packageName = apk.getPackageName();
+                    if (packageToUpdate.equals(packageName)) {
+                        apk.updateApplicationInfo(ai, null);
+                    }
+                }
+            }
+
+            // Update all affected Resources objects to use new ResourcesImpl
+            mResourcesManager.applyNewResourceDirsLocked(ai.sourceDir, ai.resourceDirs);
+        }
+
+        // Schedule all activities to reload
+        for (final Map.Entry<IBinder, ActivityClientRecord> entry : mActivities.entrySet()) {
+            final Activity activity = entry.getValue().activity;
+            if (!activity.mFinished) {
+                requestRelaunchActivity(entry.getKey(), null, null, 0, false, null, null, false,
+                        false);
+            }
+        }
+    }
+
     static void freeTextLayoutCachesIfNeeded(int configDiff) {
         if (configDiff != 0) {
             // Ask text layout engine to free its caches if there is a locale change
             boolean hasLocaleConfigChange = ((configDiff & ActivityInfo.CONFIG_LOCALE) != 0);
-            if (hasLocaleConfigChange) {
+            boolean hasFontConfigChange = ((configDiff & ActivityInfo.CONFIG_THEME_FONT) != 0);
+            if (hasLocaleConfigChange || hasFontConfigChange) {
                 Canvas.freeTextLayoutCaches();
+                if (hasFontConfigChange) {
+                    Typeface.recreateDefaults();
+                }
                 if (DEBUG_CONFIGURATION) Slog.v(TAG, "Cleared TextLayout Caches");
             }
         }
@@ -4989,9 +5072,7 @@ public final class ActivityThread {
             int uid = Process.myUid();
             String[] packages = getPackageManager().getPackagesForUid(uid);
 
-            // If there are several packages in this application we won't
-            // initialize the graphics disk caches
-            if (packages != null && packages.length == 1) {
+            if (packages != null) {
                 ThreadedRenderer.setupDiskCache(cacheDir);
                 RenderScriptCacheDir.setupDiskCache(cacheDir);
             }
@@ -5146,7 +5227,14 @@ public final class ActivityThread {
         }
         updateDefaultDensity();
 
-        final boolean is24Hr = "24".equals(mCoreSettings.getString(Settings.System.TIME_12_24));
+        final String use24HourSetting = mCoreSettings.getString(Settings.System.TIME_12_24);
+        Boolean is24Hr = null;
+        if (use24HourSetting != null) {
+            is24Hr = "24".equals(use24HourSetting) ? Boolean.TRUE : Boolean.FALSE;
+        }
+        // null : use locale default for 12/24 hour formatting,
+        // false : use 12 hour format,
+        // true : use 24 hour format.
         DateFormat.set24HourTimePref(is24Hr);
 
         View.mDebugViewAttributes =

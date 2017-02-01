@@ -18,6 +18,7 @@ package com.android.keyguard;
 
 import android.app.ActivityManager;
 import android.app.AlarmManager;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -164,6 +165,8 @@ public class KeyguardStatusView extends GridLayout {
 
         refreshTime();
         refreshAlarmStatus(nextAlarm);
+        lockscreenColors();
+        hideLockscreenItems();
     }
 
     void refreshAlarmStatus(AlarmManager.AlarmClockInfo nextAlarm) {
@@ -204,6 +207,8 @@ public class KeyguardStatusView extends GridLayout {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         KeyguardUpdateMonitor.getInstance(mContext).registerCallback(mInfoCallback);
+        lockscreenColors();
+        hideLockscreenItems();
     }
 
     @Override
@@ -234,6 +239,54 @@ public class KeyguardStatusView extends GridLayout {
         return false;
     }
 
+    // LockscreenColors
+    private void lockscreenColors() {
+        final ContentResolver resolver = getContext().getContentResolver();
+        int clockColor = Settings.System.getInt(resolver,
+                Settings.System.LOCKSCREEN_CLOCK_COLOR, 0xFFFFFFFF);
+        int clockDateColor = Settings.System.getInt(resolver,
+                Settings.System.LOCKSCREEN_CLOCK_DATE_COLOR, 0xFFFFFFFF);
+        int ownerInfoColor = Settings.System.getInt(resolver,
+                Settings.System.LOCKSCREEN_OWNER_INFO_COLOR, 0xFFFFFFFF);
+        int alarmColor = Settings.System.getInt(resolver,
+                Settings.System.LOCKSCREEN_ALARM_COLOR, 0xFFFFFFFF);
+        if (mClockView != null) {
+            mClockView.setTextColor(clockColor);
+        }
+
+        if (mDateView != null) {
+            mDateView.setTextColor(clockDateColor);
+        }
+
+        if (mOwnerInfo != null) {
+            mOwnerInfo.setTextColor(ownerInfoColor);
+        }
+
+        if (mAlarmStatusView != null) {
+            mAlarmStatusView.setTextColor(alarmColor);
+        }
+    }
+
+    // Hide LockscreenItems
+    public void hideLockscreenItems() {
+        if (Settings.System.getInt(mContext.getContentResolver(),
+                Settings.System.HIDE_LOCKSCREEN_CLOCK, 1) == 1) {
+            mClockView = (TextClock) findViewById(R.id.clock_view);
+            mClockView.setVisibility(View.VISIBLE);
+        } else {
+            mClockView = (TextClock) findViewById(R.id.clock_view);
+            mClockView.setVisibility(View.GONE);
+        }
+        if (Settings.System.getInt(mContext.getContentResolver(),
+                Settings.System.HIDE_LOCKSCREEN_DATE, 1) == 1) {
+            mDateView = (TextClock) findViewById(R.id.date_view);
+            mDateView.setVisibility(View.VISIBLE);
+        } else {
+            mDateView = (TextClock) findViewById(R.id.date_view);
+            mDateView.setVisibility(View.GONE);
+        }
+    }
+
     // DateFormat.getBestDateTimePattern is extremely expensive, and refresh is called often.
     // This is an optimization to ensure we only recompute the patterns when the inputs change.
     private static final class Patterns {
@@ -261,7 +314,8 @@ public class KeyguardStatusView extends GridLayout {
             }
 
             clockView12 = DateFormat.getBestDateTimePattern(locale, clockView12Skel);
-            if(!context.getResources().getBoolean(R.bool.config_showAmpm)){
+            if(Settings.System.getInt(context.getContentResolver(),
+                            Settings.System.LOCK_SCREEN_HIDE_AMPM, 0) == 1){
                 // CLDR insists on adding an AM/PM indicator even though it wasn't in the skeleton
                 // format.  The following code removes the AM/PM indicator if we didn't want it.
                 if (!clockView12Skel.contains("a")) {

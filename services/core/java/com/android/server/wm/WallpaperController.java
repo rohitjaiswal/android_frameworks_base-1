@@ -421,7 +421,13 @@ class WallpaperController {
                 WindowState wallpaper = windows.get(wallpaperNdx);
                 if (updateWallpaperOffset(wallpaper, dw, dh, sync)) {
                     WindowStateAnimator winAnimator = wallpaper.mWinAnimator;
-                    winAnimator.computeShownFrameLocked();
+                    if (mService.mSingleHandMode == 1) {
+                        winAnimator.computeShownFrameLeftLocked();
+                    } else if(mService.mSingleHandMode == 2) {
+                        winAnimator.computeShownFrameRightLocked();
+                    } else {
+                        winAnimator.computeShownFrameNormalLocked();
+                    }
                     // No need to lay out the windows - we can just set the wallpaper position
                     // directly.
                     winAnimator.setWallpaperOffset(wallpaper.mShownPosition);
@@ -757,14 +763,16 @@ class WallpaperController {
                 }
 
                 // Now stick it in. For apps over wallpaper keep the wallpaper at the bottommost
-                // layer. For keyguard over wallpaper put the wallpaper under the keyguard.
+                // layer. For keyguard over wallpaper put the wallpaper under the lowest window that
+                // is currently on screen, i.e. not hidden by policy.
                 int insertionIndex = 0;
                 if (visible && wallpaperTarget != null) {
                     final int type = wallpaperTarget.mAttrs.type;
                     final int privateFlags = wallpaperTarget.mAttrs.privateFlags;
                     if ((privateFlags & PRIVATE_FLAG_KEYGUARD) != 0
                             || type == TYPE_KEYGUARD_SCRIM) {
-                        insertionIndex = windows.indexOf(wallpaperTarget);
+                        insertionIndex = Math.min(windows.indexOf(wallpaperTarget),
+                                findLowestWindowOnScreen(windows));
                     }
                 }
                 if (DEBUG_WALLPAPER_LIGHT || DEBUG_WINDOW_MOVEMENT
@@ -779,6 +787,21 @@ class WallpaperController {
         }
 
         return changed;
+    }
+
+    /**
+     * @return The index in {@param windows} of the lowest window that is currently on screen and
+     *         not hidden by the policy.
+     */
+    private int findLowestWindowOnScreen(WindowList windows) {
+        final int size = windows.size();
+        for (int index = 0; index < size; index++) {
+            final WindowState win = windows.get(index);
+            if (win.isOnScreen()) {
+                return index;
+            }
+        }
+        return Integer.MAX_VALUE;
     }
 
     boolean adjustWallpaperWindows() {

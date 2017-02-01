@@ -16,6 +16,7 @@
 
 package android.app;
 
+import android.annotation.NonNull;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.IIntentReceiver;
@@ -190,7 +191,8 @@ public abstract class ApplicationThreadNative extends Binder
             data.enforceInterface(IApplicationThread.descriptor);
             List<ReferrerIntent> pi = data.createTypedArrayList(ReferrerIntent.CREATOR);
             IBinder b = data.readStrongBinder();
-            scheduleNewIntent(pi, b);
+            final boolean andPause = data.readInt() == 1;
+            scheduleNewIntent(pi, b, andPause);
             return true;
         }
 
@@ -327,6 +329,15 @@ public abstract class ApplicationThreadNative extends Binder
             data.enforceInterface(IApplicationThread.descriptor);
             Configuration config = Configuration.CREATOR.createFromParcel(data);
             scheduleConfigurationChanged(config);
+            return true;
+        }
+
+        case SCHEDULE_ASSETS_CHANGED_TRANSACTION:
+        {
+            data.enforceInterface(IApplicationThread.descriptor);
+            final String packageName = data.readString();
+            final ApplicationInfo ai = ApplicationInfo.CREATOR.createFromParcel(data);
+            scheduleAssetsChanged(packageName, ai);
             return true;
         }
 
@@ -909,12 +920,13 @@ class ApplicationThreadProxy implements IApplicationThread {
         data.recycle();
     }
 
-    public void scheduleNewIntent(List<ReferrerIntent> intents, IBinder token)
+    public void scheduleNewIntent(List<ReferrerIntent> intents, IBinder token, boolean andPause)
             throws RemoteException {
         Parcel data = Parcel.obtain();
         data.writeInterfaceToken(IApplicationThread.descriptor);
         data.writeTypedList(intents);
         data.writeStrongBinder(token);
+        data.writeInt(andPause ? 1 : 0);
         mRemote.transact(SCHEDULE_NEW_INTENT_TRANSACTION, data, null,
                 IBinder.FLAG_ONEWAY);
         data.recycle();
@@ -1120,6 +1132,17 @@ class ApplicationThreadProxy implements IApplicationThread {
         data.writeStrongBinder(token);
         data.writeStrongBinder(voiceInteractor != null ? voiceInteractor.asBinder() : null);
         mRemote.transact(SCHEDULE_LOCAL_VOICE_INTERACTION_STARTED_TRANSACTION, data, null,
+                IBinder.FLAG_ONEWAY);
+        data.recycle();
+    }
+
+    public final void scheduleAssetsChanged(@NonNull final String packageName,
+            @NonNull final ApplicationInfo ai) throws RemoteException {
+        final Parcel data = Parcel.obtain();
+        data.writeInterfaceToken(IApplicationThread.descriptor);
+        data.writeString(packageName);
+        ai.writeToParcel(data, 0);
+        mRemote.transact(SCHEDULE_ASSETS_CHANGED_TRANSACTION, data, null,
                 IBinder.FLAG_ONEWAY);
         data.recycle();
     }

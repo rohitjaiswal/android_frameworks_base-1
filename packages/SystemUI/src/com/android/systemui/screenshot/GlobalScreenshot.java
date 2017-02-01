@@ -283,10 +283,22 @@ class SaveImageInBackgroundTask extends AsyncTask<Void, Void, Void> {
                     r.getString(com.android.internal.R.string.share), shareAction);
             mNotificationBuilder.addAction(shareActionBuilder.build());
 
+            // Create an edit action for the notification
+            final Intent editScreenshootIntent = new Intent(Intent.ACTION_SEND);
+            editScreenshootIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    | Intent.FLAG_ACTIVITY_NEW_TASK);
+            editScreenshootIntent.setType("image/png");
+            editScreenshootIntent.putExtra(Intent.EXTRA_STREAM, uri);
+            editScreenshootIntent.setPackage("com.srbodroid.hexmemo");
+            final PendingIntent editAction = PendingIntent.getActivity(context,  0, editScreenshootIntent,
+                    PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_ONE_SHOT);
+            mNotificationBuilder.addAction(R.drawable.ic_screenshoot_edit,
+                    r.getString(com.android.internal.R.string.edit), editAction);
+
             // Create a delete action for the notification
             PendingIntent deleteAction = PendingIntent.getBroadcast(context,  0,
                     new Intent(context, GlobalScreenshot.DeleteScreenshotReceiver.class)
-                            .putExtra(GlobalScreenshot.SCREENSHOT_URI_ID, uri.toString()),
+                            .putExtra(GlobalScreenshot.SCREENSHOT_URI_ID, uri != null ? uri.toString() : null),
                     PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_ONE_SHOT);
             Notification.Action.Builder deleteActionBuilder = new Notification.Action.Builder(
                     R.drawable.ic_screenshot_delete,
@@ -867,8 +879,8 @@ class GlobalScreenshot {
 
         // Repurpose the existing notification to notify the user of the error
         Notification.Builder b = new Notification.Builder(context)
-            .setTicker(r.getString(R.string.screenshot_failed_title))
-            .setContentTitle(r.getString(R.string.screenshot_failed_title))
+            .setTicker(r.getString(R.string.screenshot_abort_title))
+            .setContentTitle(r.getString(R.string.screenshot_abort_title))
             .setContentText(errorMsg)
             .setSmallIcon(R.drawable.stat_notify_image_error)
             .setWhen(System.currentTimeMillis())

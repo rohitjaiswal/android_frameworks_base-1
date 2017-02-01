@@ -32,6 +32,7 @@ import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.UserHandle;
 import android.os.UserManager;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.text.format.Formatter;
 import android.util.Log;
@@ -75,7 +76,10 @@ public class KeyguardIndicationController {
     private boolean mPowerPluggedIn;
     private boolean mPowerCharged;
     private int mChargingSpeed;
+    private int mChargingCurrent;
+    private int mChargingVoltage;
     private int mChargingWattage;
+    private int mTemperature;
     private String mMessageToShowOnScreenOn;
 
     public KeyguardIndicationController(Context context, KeyguardIndicationTextView textView,
@@ -93,7 +97,7 @@ public class KeyguardIndicationController {
                 ServiceManager.getService(BatteryStats.SERVICE_NAME));
 
         KeyguardUpdateMonitor.getInstance(context).registerCallback(mUpdateMonitor);
-        context.registerReceiverAsUser(mReceiver, UserHandle.SYSTEM,
+        context.registerReceiverAsUser(mTickReceiver, UserHandle.SYSTEM,
                 new IntentFilter(Intent.ACTION_TIME_TICK), null, null);
     }
 
@@ -218,12 +222,35 @@ public class KeyguardIndicationController {
                 break;
         }
 
+        String batteryInfo = "";
+        boolean showbatteryInfo = Settings.System.getIntForUser(mContext.getContentResolver(),
+            Settings.System.LOCKSCREEN_BATTERY_INFO, 0, UserHandle.USER_CURRENT) == 1;
+
+        if (showbatteryInfo) {
+            if (mChargingCurrent > 0) {
+                batteryInfo = batteryInfo + (mChargingCurrent / 1000) + "mA";
+            }
+            if (mChargingVoltage > 0) {
+                batteryInfo = (batteryInfo == "" ? "" : batteryInfo + " · ") +
+                        (mChargingVoltage / 1000 / 1000) + "V";
+            }
+            if (mTemperature > 0) {
+                batteryInfo = (batteryInfo == "" ? "" : batteryInfo + " · ") +
+                        mTemperature / 10 + "°C";
+            }
+            if (batteryInfo != "") {
+                batteryInfo = "\n" + batteryInfo;
+            }
+        }
+
         if (hasChargingTime) {
             String chargingTimeFormatted = Formatter.formatShortElapsedTimeRoundingUpToMinutes(
                     mContext, chargingTimeRemaining);
-            return mContext.getResources().getString(chargingId, chargingTimeFormatted);
+            String chargingText = mContext.getResources().getString(chargingId, chargingTimeFormatted);
+            return chargingText + batteryInfo;
         } else {
-            return mContext.getResources().getString(chargingId);
+            String chargingText = mContext.getResources().getString(chargingId);
+            return chargingText + batteryInfo;
         }
     }
 
@@ -236,7 +263,10 @@ public class KeyguardIndicationController {
                     || status.status == BatteryManager.BATTERY_STATUS_FULL;
             mPowerPluggedIn = status.isPluggedIn() && isChargingOrFull;
             mPowerCharged = status.isCharged();
+            mChargingCurrent = status.maxChargingCurrent;
+            mChargingVoltage = status.maxChargingVoltage;
             mChargingWattage = status.maxChargingWattage;
+            mTemperature = status.temperature;
             mChargingSpeed = status.getChargingSpeed(mSlowThreshold, mFastThreshold);
             updateIndication();
         }
@@ -320,9 +350,16 @@ public class KeyguardIndicationController {
             super.onFingerprintAuthFailed();
             mLastSuccessiveErrorMessage = -1;
         }
+
+        @Override
+        public void onUserUnlocked() {
+            if (mVisible) {
+                updateIndication();
+            }
+        }
     };
 
-    BroadcastReceiver mReceiver = new BroadcastReceiver() {
+    BroadcastReceiver mTickReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (mVisible) {
@@ -330,6 +367,7 @@ public class KeyguardIndicationController {
             }
         }
     };
+
 
     private final Handler mHandler = new Handler() {
         @Override

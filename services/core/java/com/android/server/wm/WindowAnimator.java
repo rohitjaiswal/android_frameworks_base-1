@@ -46,6 +46,8 @@ import static com.android.server.wm.WindowSurfacePlacer.SET_WALLPAPER_ACTION_PEN
 import static com.android.server.wm.WindowSurfacePlacer.SET_WALLPAPER_MAY_CHANGE;
 
 import android.content.Context;
+import android.database.ContentObserver;
+import android.os.Handler;
 import android.os.Trace;
 import android.util.Slog;
 import android.util.SparseArray;
@@ -57,6 +59,8 @@ import android.view.WindowManager;
 import android.view.WindowManagerPolicy;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
+
+import cyanogenmod.providers.CMSettings;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -115,12 +119,16 @@ public class WindowAnimator {
     static final int KEYGUARD_SHOWN         = 1;
     static final int KEYGUARD_ANIMATING_OUT = 2;
     int mForceHiding = KEYGUARD_NOT_SHOWN;
+    int offsetLayer = 0;
 
     // When set to true the animator will go over all windows after an animation frame is posted and
     // check if some got replaced and can be removed.
     private boolean mRemoveReplacedWindows = false;
 
     private final AppTokenList mTmpExitingAppTokens = new AppTokenList();
+
+    /** The window that was previously hiding the Keyguard. */
+    private WindowState mLastShowWinWhenLocked;
 
     private String forceHidingToString() {
         switch (mForceHiding) {
@@ -131,11 +139,20 @@ public class WindowAnimator {
         }
     }
 
+    private boolean mKeyguardBlurEnabled;
+
     WindowAnimator(final WindowManagerService service) {
         mService = service;
         mContext = service.mContext;
         mPolicy = service.mPolicy;
         mWindowPlacerLocked = service.mWindowPlacerLocked;
+
+        final boolean isBlurSupported = mContext.getResources().getBoolean(
+                com.android.internal.R.bool.config_uiBlurEnabled);
+        if (isBlurSupported) {
+            final SettingsObserver observer = new SettingsObserver(new Handler());
+            observer.observe(mContext);
+        }
 
         mAnimationFrameCallback = new Choreographer.FrameCallback() {
             public void doFrame(long frameTimeNs) {
@@ -222,13 +239,30 @@ public class WindowAnimator {
         }
     }
 
+    /**
+     * @return The window that is currently hiding the Keyguard, or if it was hiding the Keyguard,
+     *         and it's still animating.
+     */
+    private WindowState getWinShowWhenLockedOrAnimating() {
+        final WindowState winShowWhenLocked = (WindowState) mPolicy.getWinShowWhenLockedLw();
+        if (winShowWhenLocked != null) {
+            return winShowWhenLocked;
+        }
+        if (mLastShowWinWhenLocked != null && mLastShowWinWhenLocked.isOnScreen()
+                && mLastShowWinWhenLocked.isAnimatingLw()
+                && (mLastShowWinWhenLocked.mAttrs.flags & FLAG_SHOW_WHEN_LOCKED) != 0) {
+            return mLastShowWinWhenLocked;
+        }
+        return null;
+    }
+
     private boolean shouldForceHide(WindowState win) {
         final WindowState imeTarget = mService.mInputMethodTarget;
         final boolean showImeOverKeyguard = imeTarget != null && imeTarget.isVisibleNow() &&
                 ((imeTarget.getAttrs().flags & FLAG_SHOW_WHEN_LOCKED) != 0
                         || !mPolicy.canBeForceHidden(imeTarget, imeTarget.mAttrs));
 
-        final WindowState winShowWhenLocked = (WindowState) mPolicy.getWinShowWhenLockedLw();
+        final WindowState winShowWhenLocked = getWinShowWhenLockedOrAnimating();
         final AppWindowToken appShowWhenLocked = winShowWhenLocked == null ?
                 null : winShowWhenLocked.mAppToken;
 
@@ -244,7 +278,7 @@ public class WindowAnimator {
             allowWhenLocked |= appShowWhenLocked == win.mAppToken
                     // Show all SHOW_WHEN_LOCKED windows if some apps are shown over lockscreen
                     || (win.mAttrs.flags & FLAG_SHOW_WHEN_LOCKED) != 0
-                    // Show error dialogs over apps that dismiss keyguard.
+                    // Show error dialogs over apps that are shown on lockscreen
                     || (win.mAttrs.privateFlags & PRIVATE_FLAG_SYSTEM_ERROR) != 0;
         }
 
@@ -257,6 +291,14 @@ public class WindowAnimator {
         // Only hide windows if the keyguard is active and not animating away.
         boolean keyguardOn = mPolicy.isKeyguardShowingOrOccluded()
                 && mForceHiding != KEYGUARD_ANIMATING_OUT;
+
+        final WindowState winKeyguardPanel = (WindowState) mPolicy.getWinKeyguardPanelLw();
+        // If a keyguard panel is currently being shown, we should
+        // continue to hide the windows as if blur is disabled.
+        if (winKeyguardPanel == null) {
+            keyguardOn &= !mKeyguardBlurEnabled;
+        }
+
         boolean hideDockDivider = win.mAttrs.type == TYPE_DOCK_DIVIDER
                 && win.getDisplayContent().getDockedStackLocked() == null;
         return keyguardOn && !allowWhenLocked && (win.getDisplayId() == Display.DEFAULT_DISPLAY)
@@ -275,7 +317,7 @@ public class WindowAnimator {
         final boolean keyguardGoingAwayWithWallpaper =
                 (mKeyguardGoingAwayFlags & KEYGUARD_GOING_AWAY_FLAG_WITH_WALLPAPER) != 0;
 
-        if (mKeyguardGoingAway) {
+        if (mKeyguardGoingAway && !mKeyguardBlurEnabled) {
             for (int i = windows.size() - 1; i >= 0; i--) {
                 WindowState win = windows.get(i);
                 if (!mPolicy.isKeyguardHostWindow(win.mAttrs)) {
@@ -289,7 +331,8 @@ public class WindowAnimator {
 
                         // Create a new animation to delay until keyguard is gone on its own.
                         winAnimator.mAnimation = new AlphaAnimation(1.0f, 1.0f);
-                        winAnimator.mAnimation.setDuration(KEYGUARD_ANIM_TIMEOUT_MS);
+                        winAnimator.mAnimation.setDuration(mKeyguardBlurEnabled
+                                ? 0 : KEYGUARD_ANIM_TIMEOUT_MS);
                         winAnimator.mAnimationIsEntrance = false;
                         winAnimator.mAnimationStartTime = -1;
                         winAnimator.mKeyguardGoingAwayAnimation = true;
@@ -366,7 +409,8 @@ public class WindowAnimator {
                         if (nowAnimating && win.mWinAnimator.mKeyguardGoingAwayAnimation) {
                             mForceHiding = KEYGUARD_ANIMATING_OUT;
                         } else {
-                            mForceHiding = win.isDrawnLw() ? KEYGUARD_SHOWN : KEYGUARD_NOT_SHOWN;
+                            mForceHiding = win.isDrawnLw() && !mKeyguardBlurEnabled
+                                    ? KEYGUARD_SHOWN : KEYGUARD_NOT_SHOWN;
                         }
                     }
                     if (DEBUG_KEYGUARD || DEBUG_VISIBILITY) Slog.v(TAG,
@@ -558,6 +602,11 @@ public class WindowAnimator {
                 mPostKeyguardExitAnimation = null;
             }
         }
+
+        final WindowState winShowWhenLocked = (WindowState) mPolicy.getWinShowWhenLockedLw();
+        if (winShowWhenLocked != null) {
+            mLastShowWinWhenLocked = winShowWhenLocked;
+        }
     }
 
     private void updateWallpaperLocked(int displayId) {
@@ -683,6 +732,7 @@ public class WindowAnimator {
         mBulkUpdateParams = SET_ORIENTATION_CHANGE_COMPLETE;
         boolean wasAnimating = mAnimating;
         setAnimating(false);
+        boolean isSingleHandAnimating = false;
         mAppWindowAnimating = false;
         if (DEBUG_WINDOW_TRACE) {
             Slog.i(TAG, "!!! animate: entry time=" + mCurrentTime);
@@ -729,6 +779,8 @@ public class WindowAnimator {
                 final int N = windows.size();
                 for (int j = 0; j < N; j++) {
                     windows.get(j).mWinAnimator.prepareSurfaceLocked(true);
+                    if (windows.get(j).mWinAnimator.mIsSingleHandExiting || windows.get(j).mWinAnimator.mIsSingleHandEntering)
+                        isSingleHandAnimating = true;
                 }
             }
 
@@ -757,7 +809,7 @@ public class WindowAnimator {
                 mAnimating |= mService.mDragState.stepAnimationLocked(mCurrentTime);
             }
 
-            if (mAnimating) {
+            if (mAnimating || isSingleHandAnimating) {
                 mService.scheduleAnimationLocked();
             }
 
@@ -980,5 +1032,24 @@ public class WindowAnimator {
 
     void orAnimating(boolean animating) {
         mAnimating |= animating;
+    }
+
+    private class SettingsObserver extends ContentObserver {
+        SettingsObserver(Handler handler) {
+            super(handler);
+        }
+
+        void observe(Context context) {
+            context.getContentResolver().registerContentObserver(
+                    CMSettings.Secure.getUriFor(CMSettings.Secure.LOCK_SCREEN_BLUR_ENABLED),
+                    false, this);
+            onChange(true);
+        }
+
+        @Override
+        public void onChange(boolean selfChange) {
+            mKeyguardBlurEnabled = CMSettings.Secure.getInt(mContext.getContentResolver(),
+                    CMSettings.Secure.LOCK_SCREEN_BLUR_ENABLED, 0) == 1;
+        }
     }
 }

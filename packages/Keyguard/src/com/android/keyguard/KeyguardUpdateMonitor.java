@@ -16,6 +16,7 @@
 
 package com.android.keyguard;
 
+import static android.content.Intent.ACTION_USER_UNLOCKED;
 import static android.os.BatteryManager.BATTERY_HEALTH_UNKNOWN;
 import static android.os.BatteryManager.BATTERY_STATUS_FULL;
 import static android.os.BatteryManager.BATTERY_STATUS_UNKNOWN;
@@ -23,6 +24,7 @@ import static android.os.BatteryManager.EXTRA_HEALTH;
 import static android.os.BatteryManager.EXTRA_LEVEL;
 import static android.os.BatteryManager.EXTRA_MAX_CHARGING_CURRENT;
 import static android.os.BatteryManager.EXTRA_MAX_CHARGING_VOLTAGE;
+import static android.os.BatteryManager.EXTRA_TEMPERATURE;
 import static android.os.BatteryManager.EXTRA_PLUGGED;
 import static android.os.BatteryManager.EXTRA_STATUS;
 
@@ -34,9 +36,12 @@ import android.app.PendingIntent;
 import android.app.admin.DevicePolicyManager;
 import android.app.trust.TrustManager;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.database.ContentObserver;
 import android.graphics.Bitmap;
 import android.hardware.fingerprint.FingerprintManager;
@@ -108,12 +113,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
 
     private static final String PERMISSION_SELF = "com.android.systemui.permission.SELF";
 
-    /**
-     * Milliseconds after unlocking with fingerprint times out, i.e. the user has to use a
-     * strong auth method like password, PIN or pattern.
-     */
-    private static final long FINGERPRINT_UNLOCK_TIMEOUT_MS = 72 * 60 * 60 * 1000;
-
     // Callback messages
     private static final int MSG_TIME_UPDATE = 301;
     private static final int MSG_BATTERY_UPDATE = 302;
@@ -138,6 +137,8 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
     private static final int MSG_SERVICE_STATE_CHANGE = 330;
     private static final int MSG_SCREEN_TURNED_ON = 331;
     private static final int MSG_SCREEN_TURNED_OFF = 332;
+    private static final int MSG_DREAMING_STATE_CHANGED = 333;
+    private static final int MSG_USER_UNLOCKED = 334;
 
     /** Fingerprint state: Not listening to fingerprint. */
     private static final int FINGERPRINT_STATE_STOPPED = 0;
@@ -159,6 +160,9 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
 
     private static final int DEFAULT_CHARGING_VOLTAGE_MICRO_VOLT = 5000000;
 
+    private static final ComponentName FALLBACK_HOME_COMPONENT = new ComponentName(
+            "com.android.settings", "com.android.settings.FallbackHome");
+
     private static KeyguardUpdateMonitor sInstance;
 
     private final Context mContext;
@@ -177,7 +181,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
     private boolean mGoingToSleep;
     private boolean mBouncer;
     private boolean mBootCompleted;
-    private boolean mUserUnlocked;
+    private boolean mNeedsSlowUnlockTransition;
     private boolean mHasLockscreenWallpaper;
 
     // Device provisioning state
@@ -287,6 +291,12 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
                     handleScreenTurnedOff();
                     Trace.endSection();
                     break;
+                case MSG_DREAMING_STATE_CHANGED:
+                    handleDreamingStateChanged(msg.arg1);
+                    break;
+                case MSG_USER_UNLOCKED:
+                    handleUserUnlocked();
+                    break;
             }
         }
     };
@@ -380,7 +390,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
     }
 
     /** @return List of SubscriptionInfo records, maybe empty but never null */
-    List<SubscriptionInfo> getSubscriptionInfo(boolean forceReload) {
+    public List<SubscriptionInfo> getSubscriptionInfo(boolean forceReload) {
         List<SubscriptionInfo> sil = mSubscriptionInfo;
         if (sil == null || forceReload) {
             sil = mSubscriptionManager.getActiveSubscriptionInfoList();
@@ -572,8 +582,8 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
                 && !hasFingerprintUnlockTimedOut(sCurrentUser);
     }
 
-    public boolean isUserUnlocked() {
-        return mUserUnlocked;
+    public boolean needsSlowUnlockTransition() {
+        return mNeedsSlowUnlockTransition;
     }
 
     public StrongAuthTracker getStrongAuthTracker() {
@@ -598,7 +608,10 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
     }
 
     private void scheduleStrongAuthTimeout() {
-        long when = SystemClock.elapsedRealtime() + FINGERPRINT_UNLOCK_TIMEOUT_MS;
+        final DevicePolicyManager dpm =
+                (DevicePolicyManager) mContext.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        long when = SystemClock.elapsedRealtime() + dpm.getRequiredStrongAuthTimeout(null,
+                sCurrentUser);
         Intent intent = new Intent(ACTION_STRONG_AUTH_TIMEOUT);
         intent.putExtra(USER_ID, sCurrentUser);
         PendingIntent sender = PendingIntent.getBroadcast(mContext,
@@ -646,6 +659,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
                 final int maxChargingMicroAmp = intent.getIntExtra(EXTRA_MAX_CHARGING_CURRENT, -1);
                 int maxChargingMicroVolt = intent.getIntExtra(EXTRA_MAX_CHARGING_VOLTAGE, -1);
                 final int maxChargingMicroWatt;
+                final int temperature = intent.getIntExtra(EXTRA_TEMPERATURE, -1);;
 
                 if (maxChargingMicroVolt <= 0) {
                     maxChargingMicroVolt = DEFAULT_CHARGING_VOLTAGE_MICRO_VOLT;
@@ -660,7 +674,8 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
                 }
                 final Message msg = mHandler.obtainMessage(
                         MSG_BATTERY_UPDATE, new BatteryStatus(status, level, plugged, health,
-                                maxChargingMicroWatt));
+                                maxChargingMicroAmp, maxChargingMicroVolt, maxChargingMicroWatt,
+                                temperature));
                 mHandler.sendMessage(msg);
             } else if (TelephonyIntents.ACTION_SIM_STATE_CHANGED.equals(action)) {
                 SimData args = SimData.fromIntent(intent);
@@ -716,6 +731,8 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
             } else if (DevicePolicyManager.ACTION_DEVICE_POLICY_MANAGER_STATE_CHANGED
                     .equals(action)) {
                 mHandler.sendEmptyMessage(MSG_DPM_STATE_CHANGED);
+            } else if (ACTION_USER_UNLOCKED.equals(action)) {
+                mHandler.sendEmptyMessage(MSG_USER_UNLOCKED);
             }
         }
     };
@@ -852,14 +869,21 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
         public final int level;
         public final int plugged;
         public final int health;
+        public final int maxChargingCurrent;
+        public final int maxChargingVoltage;
         public final int maxChargingWattage;
+        public final int temperature;
         public BatteryStatus(int status, int level, int plugged, int health,
-                int maxChargingWattage) {
+                int maxChargingCurrent, int maxChargingVoltage, int maxChargingWattage,
+                int temperature) {
             this.status = status;
             this.level = level;
             this.plugged = plugged;
             this.health = health;
+            this.maxChargingCurrent = maxChargingCurrent;
+            this.maxChargingVoltage = maxChargingVoltage;
             this.maxChargingWattage = maxChargingWattage;
+            this.temperature = temperature;
         }
 
         /**
@@ -986,6 +1010,17 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
         }
     }
 
+    private void handleDreamingStateChanged(int dreamStart) {
+        final int count = mCallbacks.size();
+        boolean showingDream = dreamStart == 1;
+        for (int i = 0; i < count; i++) {
+            KeyguardUpdateMonitorCallback cb = mCallbacks.get(i).get();
+            if (cb != null) {
+                cb.onDreamingStateChanged(showingDream);
+            }
+        }
+    }
+
     /**
      * IMPORTANT: Must be called from UI thread.
      */
@@ -1009,6 +1044,16 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
         }
     }
 
+    private void handleUserUnlocked() {
+        mNeedsSlowUnlockTransition = resolveNeedsSlowUnlockTransition();
+        for (int i = 0; i < mCallbacks.size(); i++) {
+            KeyguardUpdateMonitorCallback cb = mCallbacks.get(i).get();
+            if (cb != null) {
+                cb.onUserUnlocked();
+            }
+        }
+    }
+
     private KeyguardUpdateMonitor(Context context) {
         mContext = context;
         mSubscriptionManager = SubscriptionManager.from(context);
@@ -1023,7 +1068,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
         }
 
         // Take a guess at initial SIM state, battery status and PLMN until we get an update
-        mBatteryStatus = new BatteryStatus(BATTERY_STATUS_UNKNOWN, 100, 0, 0, 0);
+        mBatteryStatus = new BatteryStatus(BATTERY_STATUS_UNKNOWN, 100, 0, 0, 0, 0 ,0, 0);
 
         // Watch for interesting updates
         final IntentFilter filter = new IntentFilter();
@@ -1049,6 +1094,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
         allUserFilter.addAction(ACTION_FACE_UNLOCK_STARTED);
         allUserFilter.addAction(ACTION_FACE_UNLOCK_STOPPED);
         allUserFilter.addAction(DevicePolicyManager.ACTION_DEVICE_POLICY_MANAGER_STATE_CHANGED);
+        allUserFilter.addAction(ACTION_USER_UNLOCKED);
         context.registerReceiverAsUser(mBroadcastAllReceiver, UserHandle.ALL, allUserFilter,
                 null, null);
 
@@ -1454,7 +1500,18 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
     private void handleKeyguardReset() {
         if (DEBUG) Log.d(TAG, "handleKeyguardReset");
         updateFingerprintListeningState();
-        mUserUnlocked = mUserManager.isUserUnlocked(getCurrentUser());
+        mNeedsSlowUnlockTransition = resolveNeedsSlowUnlockTransition();
+    }
+
+    private boolean resolveNeedsSlowUnlockTransition() {
+        if (mUserManager.isUserUnlocked(getCurrentUser())) {
+            return false;
+        }
+        Intent homeIntent = new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME);
+        ResolveInfo resolveInfo = mContext.getPackageManager().resolveActivity(homeIntent,
+                0 /* flags */);
+        return FALLBACK_HOME_COMPONENT.equals(resolveInfo.getComponentInfo().getComponentName());
     }
 
     /**
@@ -1757,6 +1814,14 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
             mScreenOn = false;
         }
         mHandler.sendEmptyMessage(MSG_SCREEN_TURNED_OFF);
+    }
+
+    public void dispatchDreamingStarted() {
+        mHandler.sendMessage(mHandler.obtainMessage(MSG_DREAMING_STATE_CHANGED, 1, 0));
+    }
+
+    public void dispatchDreamingStopped() {
+        mHandler.sendMessage(mHandler.obtainMessage(MSG_DREAMING_STATE_CHANGED, 0, 0));
     }
 
     public boolean isDeviceInteractive() {

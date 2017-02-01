@@ -75,6 +75,8 @@ import com.android.internal.widget.LockPatternUtils;
 import com.android.internal.widget.VerifyCredentialResponse;
 import com.android.server.LockSettingsStorage.CredentialHash;
 
+import cyanogenmod.providers.CMSettings;
+
 import libcore.util.HexEncoding;
 
 import java.io.ByteArrayOutputStream;
@@ -240,6 +242,17 @@ public class LockSettingsService extends ILockSettings.Stub {
         final int parentId = mUserManager.getProfileParent(managedUserId).id;
         if (!mStorage.hasPassword(parentId) && !mStorage.hasPattern(parentId)) {
             if (DEBUG) Slog.v(TAG, "Parent does not have a screen lock");
+            return;
+        }
+        // Do not tie when the parent has no SID (but does have a screen lock).
+        // This can only happen during an upgrade path where SID is yet to be
+        // generated when the user unlocks for the first time.
+        try {
+            if (getGateKeeperService().getSecureUserId(parentId) == 0) {
+                return;
+            }
+        } catch (RemoteException e) {
+            Slog.e(TAG, "Failed to talk to GateKeeper service", e);
             return;
         }
         if (DEBUG) Slog.v(TAG, "Tie managed profile to parent now!");
@@ -1636,9 +1649,11 @@ public class LockSettingsService extends ILockSettings.Stub {
         Secure.LOCK_BIOMETRIC_WEAK_FLAGS,
         Secure.LOCK_PATTERN_VISIBLE,
         Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED,
+        Secure.LOCK_SEPARATE_ENCRYPTION_PASSWORD,
         Secure.LOCK_PATTERN_SIZE,
         Secure.LOCK_DOTS_VISIBLE,
         Secure.LOCK_SHOW_ERROR_PATH,
+        CMSettings.Secure.LOCK_PASS_TO_SECURITY_VIEW,
     };
 
     // Reading these settings needs the contacts permission

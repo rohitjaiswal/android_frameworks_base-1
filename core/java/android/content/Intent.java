@@ -128,7 +128,7 @@ import static android.content.ContentProvider.maybeAddUserId;
  *     a list of people, which the user can browse through.  This example is a
  *     typical top-level entry into the Contacts application, showing you the
  *     list of people. Selecting a particular person to view would result in a
- *     new intent { <b>{@link #ACTION_VIEW} <i>content://contacts/N</i></b> }
+ *     new intent { <b>{@link #ACTION_VIEW} <i>content://contacts/people/N</i></b> }
  *     being used to start an activity to display that person.</p>
  *   </li>
  * </ul>
@@ -3107,6 +3107,40 @@ public class Intent implements Parcelable, Cloneable {
             "android.intent.action.MEDIA_RESOURCE_GRANTED";
 
     /**
+     * Broadcast Action: An overlay package has been installed. The data
+     * contains the name of the added overlay package.
+     * @hide
+     */
+    public static final String ACTION_OVERLAY_ADDED = "android.intent.action.OVERLAY_ADDED";
+
+    /**
+     * Broadcast Action: An overlay package has changed. The data contains the
+     * name of the overlay package which has changed. This is broadcast on all
+     * changes to the OverlayInfo returned by {@link
+     * android.content.om.IOverlayManager#getOverlayInfo(String, int)}. The
+     * most common change is a state change that will change whether the
+     * overlay is enabled or not.
+     * @hide
+     */
+    public static final String ACTION_OVERLAY_CHANGED = "android.intent.action.OVERLAY_CHANGED";
+
+    /**
+     * Broadcast Action: An overlay package has been removed. The data contains
+     * the name of the overlay package which has been removed.
+     * @hide
+     */
+    public static final String ACTION_OVERLAY_REMOVED = "android.intent.action.OVERLAY_REMOVED";
+
+    /**
+     * Broadcast Action: The order of a package's list of overlay packages has
+     * changed. The data contains the package name of the overlay package that
+     * had its position in the list adjusted.
+     * @hide
+     */
+    public static final String
+            ACTION_OVERLAY_PRIORITY_CHANGED = "android.intent.action.OVERLAY_PRIORITY_CHANGED";
+
+    /**
      * Activity Action: Allow the user to select and return one or more existing
      * documents. When invoked, the system will display the various
      * {@link DocumentsProvider} instances installed on the device, letting the
@@ -4343,6 +4377,14 @@ public class Intent implements Parcelable, Cloneable {
      * @hide
      */
     public static final int FLAG_DEBUG_TRIAGED_MISSING = 0x00000100;
+
+    /**
+     * Internal flag used to indicate ephemeral applications should not be
+     * considered when resolving the intent.
+     *
+     * @hide
+     */
+    public static final int FLAG_IGNORE_EPHEMERAL = 0x00000200;
 
     /**
      * If set, the new activity is not kept in the history stack.  As soon as
@@ -6596,7 +6638,7 @@ public class Intent implements Parcelable, Cloneable {
      */
     public void removeUnsafeExtras() {
         if (mExtras != null) {
-            mExtras.filterValues();
+            mExtras = mExtras.filterValues();
         }
     }
 

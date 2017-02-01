@@ -16,6 +16,7 @@
 
 package android.app;
 
+import android.annotation.NonNull;
 import android.annotation.UserIdInt;
 import android.app.ActivityManager.StackInfo;
 import android.app.assist.AssistContent;
@@ -1231,6 +1232,19 @@ public abstract class ActivityManagerNative extends Binder implements IActivityM
             data.enforceInterface(IActivityManager.descriptor);
             Configuration config = Configuration.CREATOR.createFromParcel(data);
             updateConfiguration(config);
+            reply.writeNoException();
+            return true;
+        }
+
+        case UPDATE_ASSETS_TRANSACTION: {
+            data.enforceInterface(IActivityManager.descriptor);
+            final int userId = data.readInt();
+            final int N = data.readInt();
+            final List<String> packageNames = new ArrayList<>();
+            for (int i = 0; i < N; i++) {
+                packageNames.add(data.readString());
+            }
+            updateAssets(userId, packageNames);
             reply.writeNoException();
             return true;
         }
@@ -3026,6 +3040,14 @@ public abstract class ActivityManagerNative extends Binder implements IActivityM
             reply.writeNoException();
             return true;
         }
+        case CAN_BYPASS_WORK_CHALLENGE: {
+            data.enforceInterface(IActivityManager.descriptor);
+            final PendingIntent intent = PendingIntent.CREATOR.createFromParcel(data);
+            final boolean result = canBypassWorkChallenge(intent);
+            reply.writeNoException();
+            reply.writeInt(result ? 1 : 0);
+            return true;
+        }
         }
 
         return super.onTransact(code, data, reply, flags);
@@ -4595,6 +4617,22 @@ class ActivityManagerProxy implements IActivityManager
         data.writeInterfaceToken(IActivityManager.descriptor);
         values.writeToParcel(data, 0);
         mRemote.transact(UPDATE_CONFIGURATION_TRANSACTION, data, reply, 0);
+        reply.readException();
+        data.recycle();
+        reply.recycle();
+    }
+    public void updateAssets(final int userId, @NonNull final List<String> packageNames)
+            throws RemoteException
+    {
+        final Parcel data = Parcel.obtain();
+        final Parcel reply = Parcel.obtain();
+        data.writeInterfaceToken(IActivityManager.descriptor);
+        data.writeInt(userId);
+        data.writeInt(packageNames.size());
+        for (int i = 0; i < packageNames.size(); i++) {
+            data.writeString(packageNames.get(i));
+        }
+        mRemote.transact(UPDATE_ASSETS_TRANSACTION, data, reply, 0);
         reply.readException();
         data.recycle();
         reply.recycle();
@@ -7111,6 +7149,20 @@ class ActivityManagerProxy implements IActivityManager
         data.recycle();
         reply.recycle();
         return;
+    }
+    @Override
+    public boolean canBypassWorkChallenge(PendingIntent intent)
+            throws RemoteException {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        data.writeInterfaceToken(IActivityManager.descriptor);
+        intent.writeToParcel(data, 0);
+        mRemote.transact(CAN_BYPASS_WORK_CHALLENGE, data, reply, 0);
+        reply.readException();
+        final int result = reply.readInt();
+        data.recycle();
+        reply.recycle();
+        return result != 0;
     }
 
     private IBinder mRemote;

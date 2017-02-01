@@ -122,6 +122,7 @@ import com.android.server.pm.UserManagerService;
 
 import org.xmlpull.v1.XmlPullParserException;
 
+import java.io.File;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -132,6 +133,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+
+import cyanogenmod.providers.CMSettings;
 
 /**
  * The implementation of the volume manager service.
@@ -278,6 +281,7 @@ public class AudioService extends IAudioService.Stub {
 
     /* Sound effect file names  */
     private static final String SOUND_EFFECTS_PATH = "/media/audio/ui/";
+    private static final String SOUND_EFFECTS_THEMED_PATH = "/data/system/theme/audio/ui/";
     private static final List<String> SOUND_EFFECT_FILES = new ArrayList<String>();
 
     /* Sound effect file name mapping sound effect id (AudioManager.FX_xxx) to
@@ -602,6 +606,7 @@ public class AudioService extends IAudioService.Stub {
     private AudioManagerInternal.RingerModeDelegate mRingerModeDelegate;
     private VolumePolicy mVolumePolicy = VolumePolicy.DEFAULT;
     private long mLoweredFromNormalToVibrateTime;
+    private boolean mVolumeKeysControlRingStream;
 
     // Intent "extra" data keys.
     public static final String CONNECT_INTENT_KEY_PORT_NAME = "portName";
@@ -1335,6 +1340,10 @@ public class AudioService extends IAudioService.Stub {
             updateRingerModeAffectedStreams();
             readDockAudioSettings(cr);
             sendEncodedSurroundMode(cr);
+
+            mVolumeKeysControlRingStream = CMSettings.System.getIntForUser(cr,
+                    CMSettings.System.VOLUME_KEYS_CONTROL_RING_STREAM, 1,
+                    UserHandle.USER_CURRENT) == 1;
         }
 
         mLinkNotificationWithVolume = Settings.Secure.getInt(cr,
@@ -3938,10 +3947,16 @@ public class AudioService extends IAudioService.Stub {
                     if (DEBUG_VOL)
                         Log.v(TAG, "getActiveStreamType: Forcing STREAM_MUSIC stream active");
                     return AudioSystem.STREAM_MUSIC;
-                    } else {
+                } else {
+                    if (mVolumeKeysControlRingStream) {
                         if (DEBUG_VOL)
                             Log.v(TAG, "getActiveStreamType: Forcing STREAM_RING b/c default");
                         return AudioSystem.STREAM_RING;
+                    } else {
+                        if (DEBUG_VOL)
+                            Log.v(TAG, "getActiveStreamType: Forcing STREAM_MUSIC b/c default");
+                        return AudioSystem.STREAM_MUSIC;
+                    }
                 }
             } else if (isAfMusicActiveRecently(0)) {
                 if (DEBUG_VOL)
@@ -3976,9 +3991,16 @@ public class AudioService extends IAudioService.Stub {
                     if (DEBUG_VOL) Log.v(TAG, "getActiveStreamType: forcing STREAM_MUSIC");
                     return AudioSystem.STREAM_MUSIC;
                 } else {
-                    if (DEBUG_VOL) Log.v(TAG,
-                            "getActiveStreamType: using STREAM_NOTIFICATION as default");
-                    return AudioSystem.STREAM_NOTIFICATION;
+                    if (mVolumeKeysControlRingStream) {
+                        if (DEBUG_VOL)
+                            Log.v(TAG,
+                                    "getActiveStreamType: using STREAM_NOTIFICATION as default");
+                        return AudioSystem.STREAM_NOTIFICATION;
+                    } else {
+                        if (DEBUG_VOL)
+                            Log.v(TAG, "getActiveStreamType: Forcing STREAM_MUSIC b/c default");
+                        return AudioSystem.STREAM_MUSIC;
+                    }
                 }
             }
             break;
@@ -4762,9 +4784,16 @@ public class AudioService extends IAudioService.Stub {
                         continue;
                     }
                     if (poolId[SOUND_EFFECT_FILES_MAP[effect][0]] == -1) {
-                        String filePath = Environment.getRootDirectory()
-                                + SOUND_EFFECTS_PATH
-                                + SOUND_EFFECT_FILES.get(SOUND_EFFECT_FILES_MAP[effect][0]);
+                        String filePath = "";
+                        File theme_file = new File(SOUND_EFFECTS_THEMED_PATH +
+                            SOUND_EFFECT_FILES.get(SOUND_EFFECT_FILES_MAP[effect][0]));
+                        if (theme_file.exists()) {
+                            filePath = theme_file.getAbsolutePath();
+                        } else {
+                            filePath = Environment.getRootDirectory()
+                                    + SOUND_EFFECTS_PATH
+                                    + SOUND_EFFECT_FILES.get(SOUND_EFFECT_FILES_MAP[effect][0]);
+                        }
                         int sampleId = mSoundPool.load(filePath, 0);
                         if (sampleId <= 0) {
                             Log.w(TAG, "Soundpool could not load file: "+filePath);
@@ -4870,8 +4899,15 @@ public class AudioService extends IAudioService.Stub {
                 } else {
                     MediaPlayer mediaPlayer = new MediaPlayer();
                     try {
-                        String filePath = Environment.getRootDirectory() + SOUND_EFFECTS_PATH +
-                                    SOUND_EFFECT_FILES.get(SOUND_EFFECT_FILES_MAP[effectType][0]);
+                        String filePath = "";
+                        File theme_file = new File(SOUND_EFFECTS_THEMED_PATH +
+                                    SOUND_EFFECT_FILES.get(SOUND_EFFECT_FILES_MAP[effectType][0]));
+                        if (theme_file.exists()) {
+                            filePath = theme_file.getAbsolutePath();
+                        } else {
+                            filePath = Environment.getRootDirectory() + SOUND_EFFECTS_PATH +
+                                        SOUND_EFFECT_FILES.get(SOUND_EFFECT_FILES_MAP[effectType][0]);
+                        }
                         mediaPlayer.setDataSource(filePath);
                         mediaPlayer.setAudioStreamType(AudioSystem.STREAM_SYSTEM);
                         mediaPlayer.prepare();
@@ -5097,6 +5133,8 @@ public class AudioService extends IAudioService.Stub {
 
             mContentResolver.registerContentObserver(Settings.Secure.getUriFor(
                 Settings.Secure.VOLUME_LINK_NOTIFICATION), false, this);
+            mContentResolver.registerContentObserver(CMSettings.System.getUriFor(
+                CMSettings.System.VOLUME_KEYS_CONTROL_RING_STREAM), false, this);
         }
 
         @Override
@@ -5125,6 +5163,9 @@ public class AudioService extends IAudioService.Stub {
                     createStreamStates();
                     updateStreamVolumeAlias(true, TAG);
                 }
+                mVolumeKeysControlRingStream = CMSettings.System.getIntForUser(mContentResolver,
+                        CMSettings.System.VOLUME_KEYS_CONTROL_RING_STREAM, 1,
+                        UserHandle.USER_CURRENT) == 1;
             }
         }
 
@@ -6032,6 +6073,8 @@ public class AudioService extends IAudioService.Stub {
                 } else { // config == AudioSystem.FORCE_NONE
                     mBecomingNoisyIntentDevices |= AudioSystem.DEVICE_OUT_ALL_A2DP;
                 }
+                sendMsg(mAudioHandler, MSG_REPORT_NEW_ROUTES,
+                        SENDMSG_NOOP, 0, 0, null, 0);
                 break;
             case AudioSystem.FOR_DOCK:
                 if (config == AudioSystem.FORCE_ANALOG_DOCK) {

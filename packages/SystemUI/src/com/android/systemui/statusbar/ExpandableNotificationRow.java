@@ -363,20 +363,20 @@ public class ExpandableNotificationRow extends ActivatableNotificationView {
      * @param childIndex the index to add it at, if -1 it will be added at the end
      */
     public void addChildNotification(ExpandableNotificationRow row, int childIndex) {
+        row.setIsChildInGroup(true, this);
         if (mChildrenContainer == null) {
             mChildrenContainerStub.inflate();
         }
         mChildrenContainer.addNotification(row, childIndex);
         onChildrenCountChanged();
-        row.setIsChildInGroup(true, this);
     }
 
     public void removeChildNotification(ExpandableNotificationRow row) {
         if (mChildrenContainer != null) {
             mChildrenContainer.removeNotification(row);
         }
-        onChildrenCountChanged();
         row.setIsChildInGroup(false, null);
+        onChildrenCountChanged();
     }
 
     public boolean isChildInGroup() {
@@ -508,7 +508,7 @@ public class ExpandableNotificationRow extends ActivatableNotificationView {
         int intrinsicHeight = getIntrinsicHeight();
         mIsPinned = pinned;
         if (intrinsicHeight != getIntrinsicHeight()) {
-            notifyHeightChanged(false);
+            notifyHeightChanged(false /* needsAnimation */);
         }
         if (pinned) {
             setIconAnimationRunning(true);
@@ -841,8 +841,6 @@ public class ExpandableNotificationRow extends ActivatableNotificationView {
     }
 
     public void resetHeight() {
-        mMaxExpandHeight = 0;
-        mHeadsUpHeight = 0;
         onHeightReset();
         requestLayout();
     }
@@ -908,6 +906,9 @@ public class ExpandableNotificationRow extends ActivatableNotificationView {
     }
 
     public void resetTranslation() {
+        if (mTranslateAnim != null) {
+            mTranslateAnim.cancel();
+        }
         if (mTranslateableViews != null) {
             for (int i = 0; i < mTranslateableViews.size(); i++) {
                 mTranslateableViews.get(i).setTranslationX(0);
@@ -1297,7 +1298,7 @@ public class ExpandableNotificationRow extends ActivatableNotificationView {
         }
         mHeadsUpHeight = headsUpChild.getHeight();
         if (intrinsicBefore != getIntrinsicHeight()) {
-            notifyHeightChanged(false  /* needsAnimation */);
+            notifyHeightChanged(true  /* needsAnimation */);
         }
     }
 
@@ -1405,7 +1406,7 @@ public class ExpandableNotificationRow extends ActivatableNotificationView {
         if (isChildInGroup()) {
             mGroupManager.setGroupExpanded(mStatusBarNotification, true);
         }
-        notifyHeightChanged(false);
+        notifyHeightChanged(false /* needsAnimation */);
     }
 
     public void setChildrenExpanded(boolean expanded, boolean animate) {

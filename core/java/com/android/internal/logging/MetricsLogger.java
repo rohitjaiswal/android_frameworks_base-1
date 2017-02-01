@@ -31,7 +31,7 @@ public class MetricsLogger {
 
     public static final int VIEW_UNKNOWN = MetricsEvent.VIEW_UNKNOWN;
 
-    public static final int AICPEXTRAS = 999;
+    public static final int HEXAGONEXTRAS = 999;
 
     public static void visible(Context context, int category) throws IllegalArgumentException {
         if (Build.IS_DEBUGGABLE && category == VIEW_UNKNOWN) {

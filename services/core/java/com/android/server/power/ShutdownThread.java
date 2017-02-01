@@ -70,7 +70,7 @@ import java.io.IOException;
 
 import java.lang.reflect.Method;
 
-import com.android.internal.util.aicp.Helpers;
+import com.android.internal.util.hex.Helpers;
 
 import com.android.internal.R;
 

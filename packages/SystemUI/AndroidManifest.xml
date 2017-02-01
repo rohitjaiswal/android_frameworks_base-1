@@ -152,9 +152,6 @@
     <!-- DevicePolicyManager get user restrictions -->
     <uses-permission android:name="android.permission.MANAGE_PROFILE_AND_DEVICE_OWNERS" />
 
-    <!-- Needed for passing extras with intent ACTION_SHOW_ADMIN_SUPPORT_DETAILS -->
-    <uses-permission android:name="android.permission.MANAGE_DEVICE_ADMINS" />
-
     <!-- TV picture-in-picture -->
     <uses-permission android:name="android.permission.RECEIVE_MEDIA_RESOURCE_USAGE" />
 
@@ -187,6 +184,12 @@
 
     <!-- shortcut manager -->
     <uses-permission android:name="android.permission.RESET_SHORTCUT_MANAGER_THROTTLING" />
+
+    <!-- Locale QS -->
+    <uses-permission android:name="android.permission.CHANGE_CONFIGURATION" />
+
+    <!-- AppSidebar -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
 
     <application
         android:name=".SystemUIApplication"
@@ -245,8 +248,7 @@
         <service android:name=".LoadAverageService"
                 android:exported="true" />
 
-        <service android:name=".ImageWallpaper"
-                android:permission="android.permission.BIND_WALLPAPER"
+        <service android:name=".CPUInfoService"
                 android:exported="true" />
 
         <receiver android:name=".BootReceiver" androidprv:systemUserOnly="true">
@@ -254,6 +256,10 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <service android:name=".ImageWallpaper"
+                android:permission="android.permission.BIND_WALLPAPER"
+                android:exported="true" />
 
         <activity android:name=".tuner.TunerActivity"
                   android:icon="@drawable/tuner"
@@ -265,8 +271,6 @@
                 <action android:name="com.android.settings.action.EXTRA_SETTINGS" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <meta-data android:name="com.android.settings.category"
-                    android:value="com.android.settings.category.system" />
         </activity>
 
         <activity-alias android:name=".DemoMode"
@@ -295,7 +299,7 @@
                   android:excludeFromRecents="true"
                   android:stateNotNeeded="true"
                   android:resumeWhilePausing="true"
-                  android:screenOrientation="behind"
+                  android:screenOrientation="fullUser"
                   android:resizeableActivity="true"
                   android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
                   android:theme="@style/RecentsTheme.Wallpaper">
@@ -487,6 +491,21 @@
             android:exported="true"
             android:enabled="@bool/config_enableKeyguardService" />
 
+        <activity android:name=".statusbar.sidebar.SidebarConfigurationActivity"
+                  android:label="@string/title_activity_sidebar_configuration"
+                  android:taskAffinity=""
+                  android:excludeFromRecents="true"
+                  android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name=".statusbar.sidebar.SidebarContentProvider"
+            android:authorities="org.chameleonos.sidebar.contentprovider" >
+        </provider>
+
         <activity android:name=".Somnambulator"
             android:label="@string/start_dreams"
             android:icon="@mipmap/ic_launcher_dreams"
@@ -535,6 +554,27 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".DaylightHeaderDefault"
+                  android:label="Default" >
+            <intent-filter>
+                <action android:name="org.omnirom.DaylightHeaderPack" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- App picker activity -->
+        <activity
+            android:name=".hex.apppicker.AppPickerActivity"
+            android:theme="@style/AppPicker"
+            android:label="@string/quick_settings_app_picker"
+            android:icon="@drawable/ic_qs_app_picker"
+            android:enabled="true" >
+            <intent-filter>
+                <action android:name=".hex.apppicker.AppPickerActivity" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- Doze with notifications, run in main sysui process for every user  -->
         <service
             android:name=".doze.DozeService"
@@ -557,5 +597,6 @@
                 <action android:name="android.intent.action.SHOW_KEYBOARD_SHORTCUTS" />
             </intent-filter>
         </receiver>
+
     </application>
 </manifest>

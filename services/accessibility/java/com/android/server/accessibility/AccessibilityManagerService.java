@@ -398,10 +398,12 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
                     removeUser(intent.getIntExtra(Intent.EXTRA_USER_HANDLE, 0));
                 } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
                     // We will update when the automation service dies.
-                    UserState userState = getCurrentUserStateLocked();
-                    if (!userState.isUiAutomationSuppressingOtherServices()) {
-                        if (readConfigurationForUserStateLocked(userState)) {
-                            onUserStateChangedLocked(userState);
+                    synchronized (mLock) {
+                        UserState userState = getCurrentUserStateLocked();
+                        if (!userState.isUiAutomationSuppressingOtherServices()) {
+                            if (readConfigurationForUserStateLocked(userState)) {
+                                onUserStateChangedLocked(userState);
+                            }
                         }
                     }
                 } else if (Intent.ACTION_SETTING_RESTORED.equals(action)) {
@@ -2208,6 +2210,8 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
 
         AccessibilityServiceInfo mAccessibilityServiceInfo;
 
+        // The service that's bound to this instance. Whenever this value is non-null, this
+        // object is registered as a death recipient
         IBinder mService;
 
         IAccessibilityServiceClient mServiceInterface;
@@ -2342,14 +2346,14 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
                 }
             } else {
                 userState.mBindingServices.add(mComponentName);
-                mService = userState.mUiAutomationServiceClient.asBinder();
                 mMainHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         // Simulate asynchronous connection since in onServiceConnected
                         // we may modify the state data in case of an error but bind is
                         // called while iterating over the data and bad things can happen.
-                        onServiceConnected(mComponentName, mService);
+                        onServiceConnected(mComponentName,
+                                userState.mUiAutomationServiceClient.asBinder());
                     }
                 });
                 userState.mUiAutomationService = this;
@@ -2441,7 +2445,19 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
         @Override
         public void onServiceConnected(ComponentName componentName, IBinder service) {
             synchronized (mLock) {
-                mService = service;
+                if (mService != service) {
+                    if (mService != null) {
+                        mService.unlinkToDeath(this, 0);
+                    }
+                    mService = service;
+                    try {
+                        mService.linkToDeath(this, 0);
+                    } catch (RemoteException re) {
+                        Slog.e(LOG_TAG, "Failed registering death link");
+                        binderDied();
+                        return;
+                    }
+                }
                 mServiceInterface = IAccessibilityServiceClient.Stub.asInterface(service);
                 UserState userState = getUserStateLocked(mUserId);
                 addServiceLocked(this, userState);
@@ -3075,7 +3091,6 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
         }
 
         public void onAdded() throws RemoteException {
-            linkToOwnDeathLocked();
             final long identity = Binder.clearCallingIdentity();
             try {
                 mWindowManagerService.addWindowToken(mOverlayWindowToken,
@@ -3092,17 +3107,6 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
             } finally {
                 Binder.restoreCallingIdentity(identity);
             }
-            unlinkToOwnDeathLocked();
-        }
-
-        public void linkToOwnDeathLocked() throws RemoteException {
-            mService.linkToDeath(this, 0);
-        }
-
-        public void unlinkToOwnDeathLocked() {
-            if (mService != null) {
-                mService.unlinkToDeath(this, 0);
-            }
         }
 
         public void resetLocked() {
@@ -3115,7 +3119,10 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
             } catch (RemoteException re) {
                 /* ignore */
             }
-            mService = null;
+            if (mService != null) {
+                mService.unlinkToDeath(this, 0);
+                mService = null;
+            }
             mServiceInterface = null;
         }
 
@@ -3678,18 +3685,18 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
                 Rect boundsInScreen = mTempRect;
                 focus.getBoundsInScreen(boundsInScreen);
 
-                // Clip to the window bounds.
-                Rect windowBounds = mTempRect1;
-                getWindowBounds(focus.getWindowId(), windowBounds);
-                if (!boundsInScreen.intersect(windowBounds)) {
-                    return false;
-                }
-
                 // Apply magnification if needed.
                 MagnificationSpec spec = getCompatibleMagnificationSpecLocked(focus.getWindowId());
                 if (spec != null && !spec.isNop()) {
                     boundsInScreen.offset((int) -spec.offsetX, (int) -spec.offsetY);
                     boundsInScreen.scale(1 / spec.scale);
+                }
+
+                // Clip to the window bounds.
+                Rect windowBounds = mTempRect1;
+                getWindowBounds(focus.getWindowId(), windowBounds);
+                if (!boundsInScreen.intersect(windowBounds)) {
+                    return false;
                 }
 
                 // Clip to the screen bounds.

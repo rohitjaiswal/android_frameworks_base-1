@@ -34,6 +34,7 @@ import android.util.Slog;
  */
 public abstract class AuthenticationClient extends ClientMonitor {
     private long mOpId;
+    private boolean mIsCancelled = false;
 
     public abstract boolean handleFailedAttempt();
     public abstract void resetFailedAttempts();
@@ -115,6 +116,7 @@ public abstract class AuthenticationClient extends ClientMonitor {
             final int result = daemon.authenticate(mOpId, getGroupId());
             if (result != 0) {
                 Slog.w(TAG, "startAuthentication failed, result=" + result);
+                MetricsLogger.histogram(getContext(), "fingeprintd_auth_start_error", result);
                 onError(FingerprintManager.FINGERPRINT_ERROR_HW_UNAVAILABLE);
                 return result;
             }
@@ -128,6 +130,11 @@ public abstract class AuthenticationClient extends ClientMonitor {
 
     @Override
     public int stop(boolean initiatedByClient) {
+        if(mIsCancelled) {
+            Slog.e(TAG, "daemon.cancelAuthentication() is called, so return.");
+            return 0;
+        }
+        mIsCancelled = true;
         IFingerprintDaemon daemon = getFingerprintDaemon();
         if (daemon == null) {
             Slog.w(TAG, "stopAuthentication: no fingeprintd!");

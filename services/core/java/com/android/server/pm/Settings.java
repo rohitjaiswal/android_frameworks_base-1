@@ -30,7 +30,6 @@ import static android.os.Process.PACKAGE_INFO_GID;
 import static android.os.Process.SYSTEM_UID;
 
 import static com.android.server.pm.PackageManagerService.DEBUG_DOMAIN_VERIFICATION;
-
 import android.annotation.NonNull;
 import android.content.ComponentName;
 import android.content.Intent;
@@ -811,7 +810,7 @@ final class Settings {
                                     false, // suspended
                                     null, null, null,
                                     false, // blockUninstall
-                                    INTENT_FILTER_DOMAIN_VERIFICATION_STATUS_UNDEFINED, 0,
+                                    INTENT_FILTER_DOMAIN_VERIFICATION_STATUS_UNDEFINED, 0, null,
                                     null,
                                     null
                                     );
@@ -1615,7 +1614,7 @@ final class Settings {
                                 false,  // suspended
                                 null, null, null,
                                 false, // blockUninstall
-                                INTENT_FILTER_DOMAIN_VERIFICATION_STATUS_UNDEFINED, 0,
+                                INTENT_FILTER_DOMAIN_VERIFICATION_STATUS_UNDEFINED, 0, null,
                                 null,
                                 null
                                 );
@@ -1726,7 +1725,7 @@ final class Settings {
 
                     ps.setUserState(userId, ceDataInode, enabled, installed, stopped, notLaunched,
                             hidden, suspended, enabledCaller, enabledComponents, disabledComponents,
-                            blockUninstall, verifState, linkGeneration,
+                            blockUninstall, verifState, linkGeneration, null,
                             protectedComponents, visibleComponents);
                 } else if (tagName.equals("preferred-activities")) {
                     readPreferredActivitiesLPw(parser, userId);
@@ -4193,6 +4192,14 @@ final class Settings {
         }
         final String classNameStr = componentName.getClassName();
         return pkg.getCurrentEnabledStateLPr(classNameStr, userId);
+    }
+
+    boolean wasPackageEverLaunchedLPr(String packageName, int userId) {
+        final PackageSetting pkgSetting = mPackages.get(packageName);
+        if (pkgSetting == null) {
+            throw new IllegalArgumentException("Unknown package: " + packageName);
+        }
+        return !pkgSetting.getNotLaunched(userId);
     }
 
     boolean setPackageStoppedStateLPw(PackageManagerService pm, String packageName,

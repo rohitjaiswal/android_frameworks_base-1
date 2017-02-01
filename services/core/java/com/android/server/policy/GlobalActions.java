@@ -21,6 +21,7 @@ import com.android.internal.app.AlertController;
 import com.android.internal.app.AlertController.AlertParams;
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.MetricsProto.MetricsEvent;
+import com.android.internal.policy.EmergencyAffordanceManager;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
 import com.android.internal.R;
@@ -29,7 +30,6 @@ import com.android.internal.widget.LockPatternUtils;
 
 import android.app.ActivityManager;
 import android.app.ActivityManagerNative;
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -143,9 +143,11 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
     private boolean mHasTelephony;
     private boolean mHasVibrator;
     private final boolean mShowSilentToggle;
+    private final EmergencyAffordanceManager mEmergencyAffordanceManager;
 
     // Power menu customizations
     String mActions;
+    private int mScreenshotDelay;
 
     private BitSet mAirplaneModeBits;
     private final List<PhoneStateListener> mPhoneStateListeners = new ArrayList<>();
@@ -190,6 +192,8 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
 
         mShowSilentToggle = SHOW_SILENT_TOGGLE && !mContext.getResources().getBoolean(
                 com.android.internal.R.bool.config_useFixedVolume);
+
+        mEmergencyAffordanceManager = new EmergencyAffordanceManager(context);
 
         updatePowerMenuActions();
     }
@@ -279,6 +283,7 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
 
     private void handleShow() {
         awakenIfNecessary();
+        checkSettings();
         prepareDialog();
         WindowManager.LayoutParams attrs = mDialog.getWindow().getAttributes();
         attrs.setTitle("GlobalActions");
@@ -437,7 +442,9 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
             } else if (GLOBAL_ACTION_KEY_RESTART.equals(actionKey)) {
                 mItems.add(new RestartAction());
             } else if (GLOBAL_ACTION_KEY_SCREENSHOT.equals(actionKey)) {
-                mItems.add(getScreenshotAction());
+                mItems.add(new getScreenshotAction());
+            } else if (GLOBAL_ACTION_KEY_SCREENRECORD.equals(actionKey)) {
+                mItems.add(getScreenrecordAction());
             } else if (GLOBAL_ACTION_KEY_AIRPLANE.equals(actionKey)) {
                 mItems.add(mAirplaneModeOn);
             } else if (GLOBAL_ACTION_KEY_BUGREPORT.equals(actionKey)) {
@@ -470,6 +477,10 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
             }
             // Add here so we don't add more than one.
             addedKeys.add(actionKey);
+        }
+
+        if (mEmergencyAffordanceManager.needsEmergencyAffordance()) {
+            mItems.add(getEmergencyAction());
         }
 
         mAdapter = new MyAdapter();
@@ -574,17 +585,45 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
         }
     }
 
-    private Action getScreenshotAction() {
-        return new SinglePressAction(com.android.internal.R.drawable.ic_lock_screenshot,
-                R.string.global_action_screenshot) {
+    private final class getScreenshotAction extends SinglePressAction implements LongPressAction {
+        private getScreenshotAction() {
+            super(com.android.internal.R.drawable.ic_lock_screenshot,
+                    R.string.global_action_screenshot);
+        }
+
+        @Override
+        public void onPress() {
+            if (Settings.System.getInt(mContext.getContentResolver(),
+                   Settings.System.SCREENSHOT_TYPE, 0) == 1) {
+                takeScreenshot(mScreenshotSelectedRegion);
+            } else {
+                takeScreenshot(mScreenshotFullscreen);
+            }
+        }
+
+        @Override
+        public boolean onLongPress() {
+            takeScreenshot(mScreenshotSelectedRegion);
+            return false;
+        }
+
+        @Override
+        public boolean showDuringKeyguard() {
+            return true;
+        }
+
+        @Override
+        public boolean showBeforeProvisioning() {
+            return true;
+        }
+    }
+
+    private Action getScreenrecordAction() {
+        return new SinglePressAction(com.android.internal.R.drawable.ic_lock_screenrecord,
+                R.string.global_action_screenrecord) {
 
             public void onPress() {
-                if (Settings.System.getInt(mContext.getContentResolver(),
-                       Settings.System.SCREENSHOT_TYPE, 0) == 1) {
-                    takeScreenshot(mScreenshotSelectedRegion);
-                } else {
-                    takeScreenshot(mScreenshotFullscreen);
-                }
+                takeScreenrecord();
             }
 
             public boolean showDuringKeyguard() {
@@ -592,7 +631,7 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
             }
 
             public boolean showBeforeProvisioning() {
-                return true;
+                return false;
             }
         };
     }
@@ -671,6 +710,26 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
                 Intent intent = new Intent(Settings.ACTION_SETTINGS);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 mContext.startActivity(intent);
+            }
+
+            @Override
+            public boolean showDuringKeyguard() {
+                return true;
+            }
+
+            @Override
+            public boolean showBeforeProvisioning() {
+                return true;
+            }
+        };
+    }
+
+    private Action getEmergencyAction() {
+        return new SinglePressAction(com.android.internal.R.drawable.emergency_icon,
+                R.string.global_action_emergency) {
+            @Override
+            public void onPress() {
+                mEmergencyAffordanceManager.performEmergencyCall();
             }
 
             @Override
@@ -892,6 +951,13 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
                         msg.replyTo = new Messenger(h);
                         msg.arg1 = msg.arg2 = 0;
 
+                        /* wait for the dialog box to close */
+                        try {
+                             Thread.sleep(mScreenshotDelay * 1000);
+                        } catch (InterruptedException ie) {
+                            // Do nothing
+                        }
+
                         /* take the screenshot */
                         try {
                             messenger.send(msg);
@@ -911,6 +977,70 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
         }
     }
 
+    /**
+     * functions needed for taking screen record.
+     */
+    final Object mScreenrecordLock = new Object();
+    ServiceConnection mScreenrecordConnection = null;
+
+    final Runnable mScreenrecordTimeout = new Runnable() {
+        @Override public void run() {
+            synchronized (mScreenrecordLock) {
+                if (mScreenrecordConnection != null) {
+                    mContext.unbindService(mScreenrecordConnection);
+                    mScreenrecordConnection = null;
+                }
+            }
+        }
+    };
+
+    private void takeScreenrecord() {
+        synchronized (mScreenrecordLock) {
+            if (mScreenrecordConnection != null) {
+                return;
+            }
+            ComponentName cn = new ComponentName("com.android.systemui",
+                    "com.android.systemui.omni.screenrecord.TakeScreenrecordService");
+            Intent intent = new Intent();
+            intent.setComponent(cn);
+            ServiceConnection conn = new ServiceConnection() {
+                @Override
+                public void onServiceConnected(ComponentName name, IBinder service) {
+                    synchronized (mScreenrecordLock) {
+                        Messenger messenger = new Messenger(service);
+                        Message msg = Message.obtain(null, 1);
+                        final ServiceConnection myConn = this;
+                        Handler h = new Handler(mHandler.getLooper()) {
+                            @Override
+                            public void handleMessage(Message msg) {
+                                synchronized (mScreenrecordLock) {
+                                    if (mScreenrecordConnection == myConn) {
+                                        mContext.unbindService(mScreenrecordConnection);
+                                        mScreenrecordConnection = null;
+                                        mHandler.removeCallbacks(mScreenrecordTimeout);
+                                    }
+                                }
+                            }
+                        };
+                        msg.replyTo = new Messenger(h);
+                        msg.arg1 = msg.arg2 = 0;
+                        try {
+                            messenger.send(msg);
+                        } catch (RemoteException e) {
+                        }
+                    }
+                }
+                @Override
+                public void onServiceDisconnected(ComponentName name) {}
+            };
+            if (mContext.bindServiceAsUser(
+                    intent, conn, Context.BIND_AUTO_CREATE, UserHandle.CURRENT)) {
+                mScreenrecordConnection = conn;
+                mHandler.postDelayed(mScreenrecordTimeout, 31 * 60 * 1000);
+            }
+        }
+    }
+
     private void prepareDialog() {
         refreshSilentMode();
         mAirplaneModeOn.updateState(mAirplaneState);
@@ -921,6 +1051,11 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
             mContext.registerReceiver(mRingerModeReceiver, filter);
         }
     }
+   private void checkSettings() {
+        mScreenshotDelay = Settings.System.getInt(mContext.getContentResolver(),
+                Settings.System.SCREENSHOT_DELAY, 1);
+    }
+
 
     private void refreshSilentMode() {
         if (!mHasVibrator) {

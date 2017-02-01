@@ -161,7 +161,8 @@ public class ExternalStorageProvider extends DocumentsProvider {
                     final VolumeInfo privateVol = mStorageManager.findPrivateForEmulated(volume);
                     title = mStorageManager.getBestVolumeDescription(privateVol);
                 }
-            } else if (volume.getType() == VolumeInfo.TYPE_PUBLIC) {
+            } else if (volume.getType() == VolumeInfo.TYPE_PUBLIC
+                    && volume.getMountUserId() == userId) {
                 rootId = volume.getFsUuid();
                 title = mStorageManager.getBestVolumeDescription(volume);
             } else {
@@ -466,10 +467,7 @@ public class ExternalStorageProvider extends DocumentsProvider {
         displayName = FileUtils.buildValidFatFilename(displayName);
 
         final File before = getFileForDocId(docId);
-        final File after = new File(before.getParentFile(), displayName);
-        if (after.exists()) {
-            throw new IllegalStateException("Already exists " + after);
-        }
+        final File after = FileUtils.buildUniqueFile(before.getParentFile(), displayName);
         if (!before.renameTo(after)) {
             throw new IllegalStateException("Failed to rename to " + after);
         }
@@ -566,6 +564,7 @@ public class ExternalStorageProvider extends DocumentsProvider {
             throws FileNotFoundException {
         final MatrixCursor result = new MatrixCursor(resolveDocumentProjection(projection));
 
+        query = query.toLowerCase();
         final File parent;
         synchronized (mRootsLock) {
             parent = mRoots.get(rootId).path;

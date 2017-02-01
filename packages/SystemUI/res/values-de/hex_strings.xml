@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--  Copyright (C) 2014-2016 The Dirty Unicorns Project
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ -->
+
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <!-- Quick Settings tiles -->
+    <string name="quick_settings_screenshot_label">Bildschirmfoto</string>
+    <string name="quick_settings_region_screenshot_label">Bildschirm-Ausschnitt</string>
+    <string name="quick_settings_adb_network">ADB-Netzwerk</string>
+    <string name="quick_settings_network_adb_enabled_label">Aktiviert</string>
+    <string name="quick_settings_network_adb_disabled_label">Deaktiviert</string>
+    <string name="quick_settings_sync_label">Sync</string>
+    <string name="accessibility_quick_settings_sync_off">Sync AUS</string>
+    <string name="accessibility_quick_settings_sync_on">Sync AN</string>
+    <string name="accessibility_quick_settings_sync_changed_off">Sync deaktiviert</string>
+    <string name="accessibility_quick_settings_sync_changed_on">Sync aktiviert</string>
+    <string name="quick_settings_expanded_desktop_label">Erweiterte Oberfläche</string>
+    <string name="quick_settings_expanded_desktop">Erweitert</string>
+    <string name="quick_settings_expanded_desktop_off">Normal</string>
+    <string name="quick_settings_reboot_label">Neustart</string>
+    <string name="quick_settings_reboot_recovery_label">Recovery</string>
+    <string name="accessibility_quick_settings_usb_tether_off">USB Tethering AUS</string>
+    <string name="accessibility_quick_settings_usb_tether_on">USB Tethering AN</string>
+    <string name="accessibility_quick_settings_usb_tether_changed_off">USB Tethering deaktiviert</string>
+    <string name="accessibility_quick_settings_usb_tether_changed_on">USB Tethering aktiviert</string>
+    <string name="quick_settings_usb_tether_label">USB Tethering</string>
+    <string name="quick_settings_music_label">Musik</string>
+    <string name="quick_settings_music_play">Abspielen</string>
+    <string name="quick_settings_music_pause">Pause</string>
+    <string name="quick_settings_ime_tile_label">Eingabemethode</string>
+    <string name="quick_settings_caffeine_label">Koffein</string>
+    <string name="accessibility_quick_settings_caffeine_off">Koffein AUS</string>
+    <string name="accessibility_quick_settings_caffeine_on">Koffein AN</string>
+    <string name="quick_settings_screenrecord">Bildschirmaufnahme</string>
+    <string name="quick_settings_screenrecord_on">Aufnahme läuft ...</string>
+    <string name="quick_settings_heads_up_label">Pop-Up\'s</string>
+    <string name="accessibility_quick_settings_heads_up_off">Pop-Up\'s AUS</string>
+    <string name="accessibility_quick_settings_heads_up_on">Pop-Up\'s AN</string>
+    <string name="accessibility_quick_settings_heads_up_changed_off">Pop-Up\'s deaktiviert</string>
+    <string name="accessibility_quick_settings_heads_up_changed_on">Pop-Up\'s aktiviert</string>
+    <string name="quick_settings_pulse_enabled">Pulse Aktiviert</string>
+    <string name="quick_settings_pulse_disabled">Keine Visualisierung</string>
+    <string name="quick_settings_pulse_label">Pulse</string>
+    <string name="accessibility_quick_settings_pulse_off">Pulse AUS</string>
+    <string name="accessibility_quick_settings_pulse_on">Pulse AN</string>
+    <string name="accessibility_quick_settings_pulse_changed_off">Pulse deaktiviert</string>
+    <string name="accessibility_quick_settings_pulse_changed_on">Pulse aktiviert</string>
+    <string name="quick_settings_locale_label">Sprache</string>
+    <string name="quick_settings_locale_more_locales_toast">Bitte mehrere Eingabesprachen einrichten, um dies aktivieren zu können</string>
+    <string name="quick_settings_sound_label">Telefon-Ton</string>
+    <string name="quick_settings_sound_ring">Klingelton</string>
+    <string name="quick_settings_sound_vibrate">Vibrieren</string>
+    <string name="quick_settings_sound_silent">Lautlos</string>
+    <string name="accessibility_quick_settings_location_battery_saving">Standort: Energiesparmodus</string>
+    <string name="accessibility_quick_settings_location_gps_only">Standort: Nur Gerät</string>
+    <string name="accessibility_quick_settings_location_high_accuracy">Standort: Hohe Genauigkeit</string>
+    <string name="accessibility_quick_settings_location_changed_battery_saving">Energiesparmodus wird zur Standortermittlung verwendet.</string>
+    <string name="accessibility_quick_settings_location_changed_gps_only">Gerätesensoren (GPS) werden zur Standortermittlung verwendet.</string>
+    <string name="accessibility_quick_settings_location_changed_high_accuracy">Hohe Genauigkeit wird zur Standortermittlung verwendet.</string>
+    <string name="quick_settings_location_detail_title">Standortmodus</string>
+    <string name="quick_settings_location_battery_saving_label">Energiesparmodus</string>
+    <string name="quick_settings_location_gps_only_label">Nur Gerät</string>
+    <string name="quick_settings_location_high_accuracy_label">Hohe Genauigkeit</string>
+    <string name="quick_settings_location_off_label">Standort AUS</string>
+
+    <!-- Screenshot Delete Toast -->
+    <string name="delete_screenshot_toast">Bildschirmfoto gelöscht</string>
+
+    <!-- Navigation bar Tile -->
+    <string name="quick_settings_navigation_bar">Navigationsleiste</string>
+    <string name="quick_settings_smartbar">SmartBar</string>
+    <string name="quick_settings_smartbar_off">SmartBar AUS</string>
+    <string name="quick_settings_fling">Fling</string>
+    <string name="quick_settings_fling_off">Fling AUS</string>
+
+    <!-- Heads up snooze toast -->
+    <string name="heads_up_snooze_message_one_minute"><xliff:g id="string">%s</xliff:g> - Pop-Up Benachrichtigungen schlummern für 1 Minute.</string>
+    <string name="heads_up_snooze_message"><xliff:g id="string">%s</xliff:g> - Pop-Up Benachrichtigungen schlummern für <xliff:g id="number">%d</xliff:g> Minuten.</string>
+
+    <!-- Screenshot action -->
+    <string name="screenshot_abort_title">Kein Bildschirmfoto aufgenommen</string>
+    <string name="screenshot_abort_text">Aktion abgebrochen</string>
+    <!-- Aicp Extras Tile -->
+    <string name="quick_hex_extras_label">HEXAGON Extras</string>
+    <string name="quick_hex_extras_toast">LOL, Du hast tatsächlich geglaubt, dass \'Langes Drücken\' dich irgendwo hinbringt?!</string>
+
+    <!-- App sidebar -->
+    <string name="default_folder_text">Ordner</string>
+    <string name="title_activity_sidebar_configuration">Inhalt der Seitenleiste einrichten</string>
+    <string name="action_save">Speichern</string>
+    <string name="toast_items_saved">Der Inhalt der Seitenleiste wurde gespeichert.</string>
+    <string name="content_setup_instructions">Füge Apps zur Seitenleiste hinzu, indem lange auf das Symbol in der rechten Liste gedrückt wird. Ziehe (ohne loszulassen) das Symbol dann in die Leiste.\n\nKombiniere Apps in Ordner, indem das Symobl einfach über ein vorhandenes Symbol in der Leiste gezogen wird.\n\nZum Entfernen einfach das Symbol aus der Leiste ziehen.</string>
+    <string name="content_setup_dismiss">Weiter</string>
+    <string name="toast_not_installed">Die App ist nicht installiert</string>
+
+    <!-- PA Pie controls -->
+    <!-- <string name="pie_date_format" translatable="false">ccc, dd MMM yyyy</string> -->
+    <string name="pie_hour_format_12">hh:mm</string>
+    <string name="pie_hour_format_24">HH:mm</string>
+    <string name="pie_am_pm">a</string>
+
+    <!-- PA Pie Tile -->
+    <string name="quick_settings_pie">PIE</string>
+    <string name="quick_settings_pie_off">PIE AUS</string>
+    <string name="quick_settings_pie_on">PIE AN</string>
+
+    <!-- Kill app toast -->
+    <string name="app_killed_message">App beendet</string>
+
+    <!-- Ambient Display Tile -->
+    <string name="quick_settings_ambient_display_label">Inaktivitätsdisplay</string>
+    <!-- Content description of the ambient display tile in quick settings when off (not shown on the screen). [CHAR LIMIT=NONE] -->
+    <string name="accessibility_quick_settings_ambient_display_off">Inaktivitätsdisplay AUS</string>
+    <!-- Content description of the ambient display tile in quick settings when on (not shown on the screen). [CHAR LIMIT=NONE] -->
+    <string name="accessibility_quick_settings_ambient_display_on">Inaktivitätsdisplay AN</string>
+    <!-- Announcement made when ambient display changes to off (not shown on the screen). [CHAR LIMIT=NONE] -->
+    <string name="accessibility_quick_settings_ambient_display_changed_off">Inaktivitätsdisplay deaktiviert</string>
+    <!-- Announcement made when ambient display changes to on (not shown on the screen). [CHAR LIMIT=NONE] -->
+    <string name="accessibility_quick_settings_ambient_display_changed_on">Inaktivitätsdisplay aktiviert</string>
+
+    <!-- Path data for Solid battery -->
+    <!-- <string name="battery_solid_full" translatable="false">M 12 2 C 17.5228474983 2 22 6.47715250169 22 12 C 22 17.5228474983 17.5228474983 22 12 22 C 6.47715250169 22 2 17.5228474983 2 12 C 2 6.47715250169 6.47715250169 2 12 2 Z</string>
+    <string name="battery_solid_empty" translatable="false">M 12 12 C 12 12 12 12 12 12 C 12 12 12 12 12 12 C 12 12 12 12 12 12 C 12 12 12 12 12 12 Z</string> -->
+
+    <!-- Application picker Tile -->
+    <string name="quick_settings_app_picker">freie App-Auswahl</string>
+
+    <!-- QS NFC tile -->
+    <string name="quick_settings_nfc">NFC</string>
+    <string name="quick_settings_nfc_label">NFC</string>
+    <string name="quick_settings_nfc_off">NFC AUS</string>
+
+</resources>

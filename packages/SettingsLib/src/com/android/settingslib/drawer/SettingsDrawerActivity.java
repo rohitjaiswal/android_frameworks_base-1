@@ -28,8 +28,11 @@ import android.content.pm.PackageManager;
 import android.content.res.TypedArray;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.UserHandle;
+import android.os.UserManager;
 import android.provider.Settings;
 import android.support.v4.widget.DrawerLayout;
+import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.Pair;
@@ -56,6 +59,7 @@ public class SettingsDrawerActivity extends Activity {
 
     protected static final boolean DEBUG_TIMING = false;
     private static final String TAG = "SettingsDrawerActivity";
+    private static final boolean DEBUG = Log.isLoggable(TAG, Log.DEBUG);
 
     public static final String EXTRA_SHOW_MENU = "show_drawer_menu";
 
@@ -73,6 +77,7 @@ public class SettingsDrawerActivity extends Activity {
     private FrameLayout mContentHeaderContainer;
     private DrawerLayout mDrawerLayout;
     private boolean mShowingMenu;
+    private UserManager mUserManager;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -95,9 +100,11 @@ public class SettingsDrawerActivity extends Activity {
         Toolbar toolbar = (Toolbar) findViewById(R.id.action_bar);
         if (theme.getBoolean(android.R.styleable.Theme_windowNoTitle, false)) {
             toolbar.setVisibility(View.GONE);
-            mDrawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
-            mDrawerLayout = null;
-            return;
+            if (isDrawerEnabled()) {
+                mDrawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
+                mDrawerLayout = null;
+                return;
+            }
         }
         getDashboardCategories();
         setActionBar(toolbar);
@@ -108,18 +115,27 @@ public class SettingsDrawerActivity extends Activity {
             public void onItemClick(android.widget.AdapterView<?> parent, View view, int position,
                     long id) {
                 onTileClicked(mDrawerAdapter.getTile(position));
-            };
+            }
         });
+
+        mUserManager = UserManager.get(this);
         if (DEBUG_TIMING) Log.d(TAG, "onCreate took " + (System.currentTimeMillis() - startTime)
                 + " ms");
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        if (mShowingMenu && mDrawerLayout != null && item.getItemId() == android.R.id.home
-                && mDrawerAdapter.getCount() != 0) {
-            openDrawer();
-            return true;
+        if (isDrawerEnabled()) {
+            if (mShowingMenu && mDrawerLayout != null && item.getItemId() == android.R.id.home
+                    && mDrawerAdapter.getCount() != 0) {
+                openDrawer();
+                return true;
+            } else {
+                if (mShowingMenu && item.getItemId() == android.R.id.home) {
+                    this.finish();
+                    return true;
+                }
+            }
         }
         return super.onOptionsItemSelected(item);
     }
@@ -138,8 +154,16 @@ public class SettingsDrawerActivity extends Activity {
 
             new CategoriesUpdater().execute();
         }
-        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_SHOW_MENU, false)) {
-            showMenuIcon();
+        final Intent intent = getIntent();
+        if (intent != null) {
+            if (intent.hasExtra(EXTRA_SHOW_MENU)) {
+                if (intent.getBooleanExtra(EXTRA_SHOW_MENU, false)) {
+                    // Intent explicitly set to show menu.
+                    showMenuIcon();
+                }
+            } else if (isTopLevelTile(intent)) {
+                showMenuIcon();
+            }
         }
     }
 
@@ -150,6 +174,30 @@ public class SettingsDrawerActivity extends Activity {
         }
 
         super.onPause();
+    }
+
+    private boolean isTopLevelTile(Intent intent) {
+        final ComponentName componentName = intent.getComponent();
+        if (componentName == null) {
+            return false;
+        }
+        // Look for a tile that has the same component as incoming intent
+        final List<DashboardCategory> categories = getDashboardCategories();
+        for (DashboardCategory category : categories) {
+            for (Tile tile : category.tiles) {
+                if (TextUtils.equals(tile.intent.getComponent().getClassName(),
+                        componentName.getClassName())) {
+                    if (DEBUG) {
+                        Log.d(TAG, "intent is for top level tile: " + tile.title);
+                    }
+                    return true;
+                }
+            }
+        }
+        if (DEBUG) {
+            Log.d(TAG, "Intent is not for top level settings " + intent);
+        }
+        return false;
     }
 
     public void addCategoryListener(CategoryListener listener) {
@@ -184,6 +232,11 @@ public class SettingsDrawerActivity extends Activity {
         }
     }
 
+    public boolean isDrawerEnabled() {
+        return Settings.System.getInt(getApplicationContext().getContentResolver(),
+            Settings.System.SHOW_SETTINGS_DRAWER, 1) == 1;
+    }
+
     public void setContentHeaderView(View headerView) {
         mContentHeaderContainer.removeAllViews();
         if (headerView != null) {
@@ -216,16 +269,24 @@ public class SettingsDrawerActivity extends Activity {
         }
         // TODO: Do this in the background with some loading.
         mDrawerAdapter.updateCategories();
-        if (mDrawerAdapter.getCount() != 0) {
-            mDrawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
+        if (isDrawerEnabled()) {
+            if (mDrawerAdapter.getCount() != 0) {
+                mDrawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
+            } else {
+                mDrawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
+            }
         } else {
+            // Drawer: YOU SHALL NOT PASS
             mDrawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
         }
     }
 
     public void showMenuIcon() {
         mShowingMenu = true;
-        getActionBar().setHomeAsUpIndicator(R.drawable.ic_menu);
+        if (isDrawerEnabled()) {
+            getActionBar().setHomeAsUpIndicator(R.drawable.ic_menu);
+            getActionBar().setHomeActionContentDescription(R.string.content_description_menu_button);
+        }
         getActionBar().setDisplayHomeAsUpEnabled(true);
     }
 
@@ -256,6 +317,7 @@ public class SettingsDrawerActivity extends Activity {
             return true;
         }
         try {
+            updateUserHandlesIfNeeded(tile);
             int numUserHandles = tile.userHandle.size();
             if (numUserHandles > 1) {
                 ProfileSelectDialog.show(getFragmentManager(), tile);
@@ -275,6 +337,19 @@ public class SettingsDrawerActivity extends Activity {
             Log.w(TAG, "Couldn't find tile " + tile.intent, e);
         }
         return true;
+    }
+
+    private void updateUserHandlesIfNeeded(Tile tile) {
+        List<UserHandle> userHandles = tile.userHandle;
+
+        for (int i = userHandles.size() - 1; i >= 0; i--) {
+            if (mUserManager.getUserInfo(userHandles.get(i).getIdentifier()) == null) {
+                if (DEBUG) {
+                    Log.d(TAG, "Delete the user: " + userHandles.get(i).getIdentifier());
+                }
+                userHandles.remove(i);
+            }
+        }
     }
 
     protected void onTileClicked(Tile tile) {

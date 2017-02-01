@@ -46,6 +46,7 @@ import android.content.pm.ProviderInfo;
 import android.content.pm.UserInfo;
 import android.content.res.Configuration;
 import android.content.res.ObbInfo;
+import android.net.TrafficStats;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.DropBoxManager;
@@ -86,6 +87,7 @@ import android.text.format.DateUtils;
 import android.util.ArrayMap;
 import android.util.AtomicFile;
 import android.util.Log;
+import android.util.Pair;
 import android.util.Slog;
 import android.util.TimeUtils;
 import android.util.Xml;
@@ -1057,6 +1059,10 @@ class MountService extends IMountService.Stub
                         || mForceAdoptable) {
                     flags |= DiskInfo.FLAG_ADOPTABLE;
                 }
+                // Adoptable storage isn't currently supported on FBE devices
+                if (StorageManager.isFileEncryptedNativeOnly()) {
+                    flags &= ~DiskInfo.FLAG_ADOPTABLE;
+                }
                 mDisks.put(id, new DiskInfo(id, flags));
                 break;
             }
@@ -1441,13 +1447,22 @@ class MountService extends IMountService.Stub
      * Decide if volume is mountable per device policies.
      */
     private boolean isMountDisallowed(VolumeInfo vol) {
-        if (vol.type == VolumeInfo.TYPE_PUBLIC || vol.type == VolumeInfo.TYPE_PRIVATE) {
-            final UserManager userManager = mContext.getSystemService(UserManager.class);
-            return userManager.hasUserRestriction(UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA,
+        UserManager userManager = mContext.getSystemService(UserManager.class);
+
+        boolean isUsbRestricted = false;
+        if (vol.disk != null && vol.disk.isUsb()) {
+            isUsbRestricted = userManager.hasUserRestriction(UserManager.DISALLOW_USB_FILE_TRANSFER,
                     Binder.getCallingUserHandle());
-        } else {
-            return false;
         }
+
+        boolean isTypeRestricted = false;
+        if (vol.type == VolumeInfo.TYPE_PUBLIC || vol.type == VolumeInfo.TYPE_PRIVATE) {
+            isTypeRestricted = userManager
+                    .hasUserRestriction(UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA,
+                    Binder.getCallingUserHandle());
+        }
+
+        return isUsbRestricted || isTypeRestricted;
     }
 
     private void enforceAdminUser() {
@@ -1997,6 +2012,11 @@ class MountService extends IMountService.Stub
         }
 
         if ((mask & StorageManager.DEBUG_FORCE_ADOPTABLE) != 0) {
+            if (StorageManager.isFileEncryptedNativeOnly()) {
+                throw new IllegalStateException(
+                        "Adoptable storage not available on device with native FBE");
+            }
+
             synchronized (mLock) {
                 mForceAdoptable = (flags & StorageManager.DEBUG_FORCE_ADOPTABLE) != 0;
 
@@ -3769,6 +3789,18 @@ class MountService extends IMountService.Stub
 
             pw.println();
             pw.println("Primary storage UUID: " + mPrimaryStorageUuid);
+            final Pair<String, Long> pair = StorageManager.getPrimaryStoragePathAndSize();
+            if (pair == null) {
+                pw.println("Internal storage total size: N/A");
+            } else {
+                pw.print("Internal storage (");
+                pw.print(pair.first);
+                pw.print(") total size: ");
+                pw.print(pair.second);
+                pw.print(" (");
+                pw.print((float) pair.second / TrafficStats.GB_IN_BYTES);
+                pw.println(" GB)");
+            }
             pw.println("Force adoptable: " + mForceAdoptable);
             pw.println();
             pw.println("Local unlocked users: " + Arrays.toString(mLocalUnlockedUsers));

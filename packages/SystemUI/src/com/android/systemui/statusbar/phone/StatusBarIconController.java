@@ -152,8 +152,8 @@ public class StatusBarIconController extends StatusBarIconList implements Tunabl
         mClockController = new ClockController(statusBar, mNotificationIconAreaController, mHandler);
         mCenterClockLayout = statusBar.findViewById(R.id.center_clock_layout);
         mNetworkTraffic = (NetworkTraffic) statusBar.findViewById(R.id.networkTraffic);
-        mAicpLogoRight = (ImageView) statusBar.findViewById(R.id.aicp_logo);
-        mAicpLogoLeft = (ImageView) statusBar.findViewById(R.id.left_aicp_logo);
+        mAicpLogoRight = (ImageView) statusBar.findViewById(R.id.hex_logo);
+        mAicpLogoLeft = (ImageView) statusBar.findViewById(R.id.left_hex_logo);
         mCarrierLabel = (TextView) statusBar.findViewById(R.id.statusbar_carrier_text);
         loadDimens();
 
@@ -344,7 +344,7 @@ public class StatusBarIconController extends StatusBarIconList implements Tunabl
         animateHide(mSystemIconArea, animate);
         animateHide(mCenterClockLayout, animate);
         if (Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.STATUS_BAR_AICP_LOGO, 0) == 1) {
+                Settings.System.STATUS_BAR_HEXAGON_LOGO, 0) == 1) {
             animateHide(mAicpLogoLeft, animate);
         }
     }
@@ -353,7 +353,7 @@ public class StatusBarIconController extends StatusBarIconList implements Tunabl
         animateShow(mSystemIconArea, animate);
         animateShow(mCenterClockLayout, animate);
         if (Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.STATUS_BAR_AICP_LOGO, 0) == 1) {
+                Settings.System.STATUS_BAR_HEXAGON_LOGO, 0) == 1) {
             animateShow(mAicpLogoLeft, animate);
         }
     }
@@ -570,7 +570,7 @@ public class StatusBarIconController extends StatusBarIconList implements Tunabl
         mBatteryLevelView.setTextColor(getTint(mTintArea, mBatteryLevelView, mIconTint));
         mNetworkTraffic.setDarkIntensity(mDarkIntensity);
         if (Settings.System.getIntForUser(mContext.getContentResolver(),
-                Settings.System.STATUS_BAR_AICP_LOGO_COLOR, 0xFFFFFFFF,
+                Settings.System.STATUS_BAR_HEXAGON_LOGO_COLOR, 0xFFFFFFFF,
                 UserHandle.USER_CURRENT) == 0xFFFFFFFF) {
             mAicpLogoRight.setImageTintList(ColorStateList.valueOf(mIconTint));
             mAicpLogoLeft.setImageTintList(ColorStateList.valueOf(mIconTint));
@@ -635,6 +635,7 @@ public class StatusBarIconController extends StatusBarIconList implements Tunabl
         mNotificationIconAreaController.onDensityOrFontScaleChanged(mContext);
         updateClock();
         updateCarrier();
+        updateBatteryLevelText();
         for (int i = 0; i < mStatusIcons.getChildCount(); i++) {
             View child = mStatusIcons.getChildAt(i);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -664,5 +665,9 @@ public class StatusBarIconController extends StatusBarIconList implements Tunabl
                 mContext.getResources().getDimensionPixelSize(
                         R.dimen.status_bar_clock_end_padding),
                 0);
+    }
+
+    private void updateBatteryLevelText() {
+        FontSizeUtils.updateFontSize(mBatteryLevelView, R.dimen.battery_level_text_size);
     }
 }

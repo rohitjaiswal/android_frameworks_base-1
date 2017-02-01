@@ -51,6 +51,8 @@ public abstract class PanelView extends FrameLayout {
     public static final boolean DEBUG = PanelBar.DEBUG;
     public static final String TAG = PanelView.class.getSimpleName();
 
+    public static final float SPEED_UP_FACTOR_CLICKED = 1.7f;
+
     private final void logf(String fmt, Object... args) {
         Log.v(TAG, (mViewName != null ? (mViewName + ": ") : "") + String.format(fmt, args));
     }
@@ -63,7 +65,7 @@ public abstract class PanelView extends FrameLayout {
     private float mInitialOffsetOnTouch;
     private boolean mCollapsedAndHeadsUpOnDown;
     private float mExpandedFraction = 0;
-    protected float mExpandedHeight = 0;
+    protected static float mExpandedHeight = 0;
     private boolean mPanelClosedOnDown;
     private boolean mHasLayoutedSinceDown;
     private float mUpdateFlingVelocity;
@@ -108,6 +110,7 @@ public abstract class PanelView extends FrameLayout {
      * Whether an instant expand request is currently pending and we are just waiting for layout.
      */
     private boolean mInstantExpanding;
+    private boolean mAnimateAfterExpanding;
 
     PanelBar mBar;
 
@@ -673,7 +676,7 @@ public abstract class PanelView extends FrameLayout {
             }
             mUpdateExpandOnLayout = isFullyCollapsed();
             mFlingAnimationUtils.apply(animator, mExpandedHeight, target, vel, getHeight());
-            if (expandBecauseOfFalsing) {
+            if (vel == 0) {
                 animator.setDuration(350);
             }
         } else {
@@ -821,7 +824,7 @@ public abstract class PanelView extends FrameLayout {
         return mExpandedHeight >= getMaxPanelHeight();
     }
 
-    public boolean isFullyCollapsed() {
+    public static boolean isFullyCollapsed() {
         return mExpandedHeight <= 0;
     }
 
@@ -893,6 +896,7 @@ public abstract class PanelView extends FrameLayout {
         }
 
         mInstantExpanding = true;
+        mAnimateAfterExpanding = animate;
         mUpdateFlingOnLayout = false;
         abortAnimations();
         cancelPeek();
@@ -917,7 +921,7 @@ public abstract class PanelView extends FrameLayout {
                         if (mStatusBar.getStatusBarWindow().getHeight()
                                 != mStatusBar.getStatusBarHeight()) {
                             getViewTreeObserver().removeOnGlobalLayoutListener(this);
-                            if (animate) {
+                            if (mAnimateAfterExpanding) {
                                 notifyExpandingStarted();
                                 fling(0, true /* expand */);
                             } else {
@@ -1071,6 +1075,13 @@ public abstract class PanelView extends FrameLayout {
         }
         return onMiddleClicked();
     }
+
+    protected final Runnable mEmptySpaceClickedRunnable = new Runnable() {
+        @Override
+        public void run() {
+            collapse(false /* delayed */, SPEED_UP_FACTOR_CLICKED /* speedUpFactor */);
+        }
+    };
 
     protected final Runnable mPostCollapseRunnable = new Runnable() {
         @Override
