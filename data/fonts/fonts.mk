@@ -15,7 +15,9 @@
 # Warning: this is actually a product definition, to be inherited from
 
 PRODUCT_COPY_FILES := \
-    frameworks/base/data/fonts/fonts.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/fonts.xml
+    frameworks/base/data/fonts/fonts.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/fonts.xml \
+    frameworks/base/data/fonts/big-noodle.ttf:$(TARGET_COPY_OUT_SYSTEM)/fonts/big-noodle.ttf \
+    frameworks/base/data/fonts/big-noodle.ttf:$(TARGET_COPY_OUT_SYSTEM)/fonts/big-noodleItalic.ttf
 
 PRODUCT_PACKAGES := \
     DroidSansFallback.ttf \
