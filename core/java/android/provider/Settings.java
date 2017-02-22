@@ -4716,6 +4716,42 @@ public final class Settings {
         public static final String SMARTBAR_DOUBLETAP_SLEEP = "smartbar_doubletap_sleep";
 
         /**
+         * Enable/disable overwrite default value for ambient display
+         * @hide
+         */
+        public static final String DOZE_OVERWRITE_VALUE = "doze_overwrite_value";
+
+        /**
+         * Duration in for ambient display
+         * @hide
+         */
+        public static final String DOZE_PULSE_DURATION_IN = "doze_pulse_duration_in";
+
+        /**
+         * Duration out for ambient display
+         * @hide
+         */
+        public static final String DOZE_PULSE_DURATION_OUT = "doze_pulse_duration_out";
+
+        /**
+         * Duration visible for ambient display
+         * @hide
+         */
+        public static final String DOZE_PULSE_DURATION_VISIBLE = "doze_pulse_duration_visible";
+
+        /**
+         * custom screen brightness for doze mode
+         * @hide
+         */
+        public static final String DOZE_SCREEN_BRIGHTNESS = "doze_screen_brightness";
+
+       /**
+         * Require double tap instead of simple tap to wake from Doze pulse screen
+         * @hide
+         */
+        public static final String DOUBLE_TAP_WAKE_DOZE = "double_tap_wake_doze";
+
+        /**
          * Whether to show or hide the Settings Shortcut
          * @hide
          */
@@ -4818,11 +4854,11 @@ public final class Settings {
         public static final String RECENT_CARD_TEXT_COLOR = "recent_card_text_color";
 
         /**
-         * Slim recents AICPfied empty recents drawable
+         * Slim recents HEXAGONfied empty recents drawable
          *
          * @hide
          */
-        public static final String SLIM_RECENT_AICP_EMPTY_DRAWABLE = "slim_recents_aicp_empty_drawable";
+        public static final String SLIM_RECENT_HEXAGON_EMPTY_DRAWABLE = "slim_recents_hex_empty_drawable";
 
         /**
          * Settings to backup. This is here so that it's in the same place as the settings

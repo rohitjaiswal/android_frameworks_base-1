@@ -14,18 +14,20 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
 
-    <item
-        android:id="@+id/battery_frame"
-        android:drawable="@drawable/ic_battery_aicp_frame" />
+    <clip-path
+        android:name="mask"
+        android:pathData="@string/battery_hex_clip_path" />
 
-    <item
-        android:id="@+id/battery_fill"
-        android:drawable="@drawable/ic_battery_aicp_avd" />
+    <!-- Path will be tinted based on light/dark modes -->
+    <path
+        android:name="frame"
+        android:fillColor="#000000"
+        android:pathData="@string/battery_hex_path_frame" />
 
-    <item
-        android:id="@+id/battery_charge_indicator"
-        android:drawable="@drawable/ic_battery_aicpbolt" />
-
-</layer-list>
+</vector>

@@ -283,7 +283,7 @@ public class RecentController implements RecentPanelView.OnExitListener,
         mRecentWarningContent.setBackgroundColor(Color.RED);
 
         if (mAicpEmptyView) {
-            // AICP empty recents drawable
+            // HEXAGON empty recents drawable
             AnimatedVectorDrawable vd = (AnimatedVectorDrawable)
                     mContext.getResources().getDrawable(R.drawable.no_recents, null);
             vd.setTint(getEmptyRecentColor());
@@ -589,7 +589,7 @@ public class RecentController implements RecentPanelView.OnExitListener,
                     Settings.System.RECENT_SHOW_RUNNING_TASKS),
                     false, this, UserHandle.USER_ALL);
             resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.SLIM_RECENT_AICP_EMPTY_DRAWABLE),
+                    Settings.System.SLIM_RECENT_HEXAGON_EMPTY_DRAWABLE),
                     false, this, UserHandle.USER_ALL);
             update();
         }
@@ -607,7 +607,7 @@ public class RecentController implements RecentPanelView.OnExitListener,
                     UserHandle.USER_CURRENT);
 
             mAicpEmptyView = Settings.System.getIntForUser(resolver,
-                    Settings.System.SLIM_RECENT_AICP_EMPTY_DRAWABLE, 1,
+                    Settings.System.SLIM_RECENT_HEXAGON_EMPTY_DRAWABLE, 1,
                     UserHandle.USER_CURRENT) == 1;
 
             // Set main gravity and background images.
