@@ -105,7 +105,11 @@
 
     <!-- The default tiles to display in QuickSettings -->
     <string name="quick_settings_tiles_stock" translatable="false">
+<<<<<<< HEAD
         wifi,cell,battery,dnd,flashlight,rotation,bt,airplane,location,hotspot,inversion,saver,work,cast,night,screenshot,adb_network,sync,expanded_desktop,reboot,usb_tether,music,ime,caffeine,navigation_bar,screenrecord,heads_up,pulse,locale,pie,sound,ambient_display,app_picker,nfc
+=======
+        wifi,cell,battery,dnd,flashlight,rotation,bt,airplane,location,hotspot,inversion,saver,work,cast,night,screenshot,adb_network,sync,expanded_desktop,reboot,usb_tether,music,ime,caffeine,navigation_bar,screenrecord,heads_up,pulse,locale,aicp_extras,pie,sound,ambient_display,app_picker,nfc,weather
+>>>>>>> c72e5aa... [1/2] base: SystemUI: OmniJaws qs tile integration
     </string>
 
     <!-- The tiles to display in QuickSettings -->
