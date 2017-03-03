@@ -470,7 +470,7 @@ public class QuickStatusBarHeader extends BaseStatusBarHeader implements
 
     private void startAicpExtrasActivity() {
         mActivityStarter.startActivity(new Intent().setComponent(new ComponentName(
-                "com.lordclockan", "com.lordclockan.hexextras.MainActivity")),
+                "com.droidvnteam", "com.droidvnteam.hexextras.MainActivity")),
                 true /* dismissShade */);
     }
 

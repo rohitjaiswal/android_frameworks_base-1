@@ -17,7 +17,7 @@
 * -->
 */
 
-package com.android.systemui.aicp.onthego;
+package com.android.systemui.hex.onthego;
 
 import android.app.Dialog;
 import android.content.ContentResolver;
@@ -34,7 +34,7 @@ import android.widget.CompoundButton;
 import android.widget.SeekBar;
 import android.widget.Switch;
 
-import com.android.internal.util.aicp.AicpUtils;
+import com.android.internal.util.hex.AicpUtils;
 import com.android.systemui.R;
 
 public class OnTheGoDialog extends Dialog {

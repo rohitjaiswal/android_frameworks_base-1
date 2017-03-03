@@ -17,7 +17,7 @@
 * -->
 */
 
-package com.android.systemui.aicp.onthego;
+package com.android.systemui.hex.onthego;
 
 import android.app.Notification;
 import android.app.NotificationManager;
@@ -42,7 +42,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
-import com.android.internal.util.aicp.AicpUtils;
+import com.android.internal.util.hex.AicpUtils;
 import com.android.systemui.R;
 
 import java.io.IOException;
@@ -352,7 +352,7 @@ public class OnTheGoService extends Service {
 
         if (type == 1 || type == 2) {
             final ComponentName cn = new ComponentName("com.android.systemui",
-                    "com.android.systemui.aicp.onthego.OnTheGoService");
+                    "com.android.systemui.hex.onthego.OnTheGoService");
             final Intent startIntent = new Intent();
             startIntent.setComponent(cn);
             startIntent.setAction(ACTION_START);

@@ -17,7 +17,7 @@
 * -->
 */
 
-package com.android.internal.util.aicp;
+package com.android.internal.util.hex;
 
 import android.content.ComponentName;
 import android.content.Context;
@@ -41,7 +41,7 @@ public class AicpActions {
 
     private static void actionOnTheGoToggle(final Context context) {
         final ComponentName cn = new ComponentName("com.android.systemui",
-                "com.android.systemui.aicp.onthego.OnTheGoService");
+                "com.android.systemui.hex.onthego.OnTheGoService");
         final Intent startIntent = new Intent();
         startIntent.setComponent(cn);
         startIntent.setAction("start");

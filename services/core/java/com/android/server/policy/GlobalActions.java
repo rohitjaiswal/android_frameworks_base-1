@@ -105,7 +105,7 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 
-import com.android.internal.util.aicp.AicpActions;
+import com.android.internal.util.hex.AicpActions;
 
 import static com.android.internal.util.cm.PowerMenuConstants.*;
 

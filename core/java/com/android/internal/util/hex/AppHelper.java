@@ -14,7 +14,7 @@
 * limitations under the License.
 */
 
-package com.android.internal.util.aicp;
+package com.android.internal.util.hex;
 
 import android.content.Context;
 import android.content.Intent;
