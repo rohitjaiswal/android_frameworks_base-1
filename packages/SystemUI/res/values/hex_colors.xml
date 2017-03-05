@@ -15,7 +15,13 @@
      limitations under the License.
 -->
 <resources>
+<!-- Hex UI-->
 
+    <color name="qs_icon_off">#ff75787f</color>
+    <color name="qs_icon_on">#ff2f78ad</color>
+    <color name="qs_icon_bg_off">#ff2f78ad</color>
+    <color name="qs_icon_bg_on">#ff2f78ad</color>
+    <color name="qs_icon_on_alpha">#66ffffff</color>
     <!-- Alarm status color -->
     <color name="alarm_status_color">#E0E0E0</color>
 

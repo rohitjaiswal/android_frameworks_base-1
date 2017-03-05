@@ -24,7 +24,7 @@
             <shape>
                 <corners android:radius="@dimen/borderless_button_radius" />
 
-                <solid android:color="@android:color/white" />
+                <solid android:color="#ff2f78ad" />
             </shape>
         </item>
 
