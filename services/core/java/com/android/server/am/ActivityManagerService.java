@@ -36,7 +36,7 @@ import com.android.internal.os.ProcessCpuTracker;
 import com.android.internal.os.TransferPipe;
 import com.android.internal.os.Zygote;
 import com.android.internal.os.InstallerConnection.InstallerException;
-import com.android.internal.util.aicp.AicpUtils;
+import com.android.internal.util.hex.AicpUtils;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.FastPrintWriter;
 import com.android.internal.util.FastXmlSerializer;
