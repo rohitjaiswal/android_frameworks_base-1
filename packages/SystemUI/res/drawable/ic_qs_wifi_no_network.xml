@@ -20,6 +20,6 @@ Copyright (C) 2014 The Android Open Source Project
     android:viewportHeight="48">
 
     <path
-        android:fillColor="@color/qs_icon_on_alpha"
+        android:fillColor="#ff75787f"
         android:pathData="M24,35c1.1,0,2,0.9,2,2s-0.9,2-2,2s-2-0.9-2-2S22.9,35,24,35z" />
 </vector>
