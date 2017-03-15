@@ -48,7 +48,7 @@ import android.view.accessibility.AccessibilityManager;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
-import com.android.internal.util.aicp.RandomColorHelper;
+import com.android.internal.util.hex.RandomColorHelper;
 
 /**
  * A toast is a view containing a quick little message for the user.  The toast class
