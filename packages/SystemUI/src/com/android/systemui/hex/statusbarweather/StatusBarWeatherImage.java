@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 AICP
+ * Copyright (C) 2017 HEXAGON
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.android.systemui.aicp.statusbarweather;
+package com.android.systemui.hex.statusbarweather;
 
 import android.content.ContentResolver;
 import android.content.Context;
@@ -22,32 +22,68 @@ import android.database.ContentObserver;
 import android.os.Handler;
 import android.os.UserHandle;
 import android.provider.Settings;
-import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
-import android.widget.TextView;
+import android.widget.ImageView;
 
 import com.android.systemui.R;
 import com.android.systemui.omni.DetailedWeatherView;
 import com.android.systemui.omni.OmniJawsClient;
 
-public class StatusBarWeather extends TextView implements
+public class StatusBarWeatherImage extends ImageView implements
         OmniJawsClient.OmniJawsObserver {
 
-    private static final String TAG = StatusBarWeather.class.getSimpleName();
+    private String TAG = StatusBarWeatherImage.class.getSimpleName();
 
     private static final boolean DEBUG = false;
 
     private Context mContext;
 
     private int mStatusBarWeatherEnabled;
-    private TextView mStatusBarWeatherInfo;
     private OmniJawsClient mWeatherClient;
     private OmniJawsClient.WeatherInfo mWeatherData;
     private boolean mEnabled;
 
     Handler mHandler;
+
+    public StatusBarWeatherImage(Context context) {
+        this(context, null);
+    }
+
+    public StatusBarWeatherImage(Context context, AttributeSet attrs) {
+        this(context, attrs, 0);
+    }
+
+    public StatusBarWeatherImage(Context context, AttributeSet attrs, int defStyle) {
+        super(context, attrs, defStyle);
+        mContext = context;
+        mHandler = new Handler();
+        mWeatherClient = new OmniJawsClient(mContext);
+        mEnabled = mWeatherClient.isOmniJawsEnabled();
+        SettingsObserver settingsObserver = new SettingsObserver(mHandler);
+        settingsObserver.observe();
+    }
+
+    @Override
+    protected void onFinishInflate() {
+        super.onFinishInflate();
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        mEnabled = mWeatherClient.isOmniJawsEnabled();
+        mWeatherClient.addObserver(this);
+        queryAndUpdateWeather();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        mWeatherClient.removeObserver(this);
+        mWeatherClient.cleanupObserver();
+    }
 
     class SettingsObserver extends ContentObserver {
         SettingsObserver(Handler handler) {
@@ -68,40 +104,6 @@ public class StatusBarWeather extends TextView implements
         }
     }
 
-    public StatusBarWeather(Context context) {
-        this(context, null);
-
-    }
-
-    public StatusBarWeather(Context context, AttributeSet attrs) {
-        this(context, attrs, 0);
-    }
-
-    public StatusBarWeather(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
-        mContext = context;
-        mHandler = new Handler();
-        mWeatherClient = new OmniJawsClient(mContext);
-        mEnabled = mWeatherClient.isOmniJawsEnabled();
-        SettingsObserver settingsObserver = new SettingsObserver(mHandler);
-        settingsObserver.observe();
-    }
-
-    @Override
-    protected void onAttachedToWindow() {
-        super.onAttachedToWindow();
-        mEnabled = mWeatherClient.isOmniJawsEnabled();
-        mWeatherClient.addObserver(this);
-        queryAndUpdateWeather();
-    }
-
-    @Override
-    protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
-        mWeatherClient.removeObserver(this);
-        mWeatherClient.cleanupObserver();
-    }
-
     @Override
     public void weatherUpdated() {
         if (DEBUG) Log.d(TAG, "weatherUpdated");
@@ -113,7 +115,10 @@ public class StatusBarWeather extends TextView implements
         mStatusBarWeatherEnabled = Settings.System.getIntForUser(
                 resolver, Settings.System.STATUS_BAR_SHOW_WEATHER_TEMP, 0,
                 UserHandle.USER_CURRENT);
-        if (mStatusBarWeatherEnabled != 0 && mStatusBarWeatherEnabled != 5) {
+        if (mStatusBarWeatherEnabled == 1
+                || mStatusBarWeatherEnabled == 2
+                || mStatusBarWeatherEnabled == 5) {
+            mWeatherClient.setOmniJawsEnabled(true);
             queryAndUpdateWeather();
         } else {
             setVisibility(View.GONE);
@@ -123,17 +128,16 @@ public class StatusBarWeather extends TextView implements
     private void queryAndUpdateWeather() {
         try {
             if (DEBUG) Log.d(TAG, "queryAndUpdateWeather " + mEnabled);
+            setImageDrawable(mWeatherClient.getDefaultWeatherConditionImage());
             if (mEnabled) {
                 mWeatherClient.queryWeather();
                 mWeatherData = mWeatherClient.getWeatherInfo();
                 if (mWeatherData != null) {
-                    if (mStatusBarWeatherEnabled != 0
-                            || mStatusBarWeatherEnabled != 5) {
-                        if (mStatusBarWeatherEnabled == 2 || mStatusBarWeatherEnabled == 4) {
-                            setText(mWeatherData.temp);
-                        } else {
-                            setText(mWeatherData.temp + mWeatherData.tempUnits);
-                        }
+                    if (mStatusBarWeatherEnabled == 1
+                            || mStatusBarWeatherEnabled == 2
+                            || mStatusBarWeatherEnabled == 5) {
+                        setImageDrawable(mWeatherClient.getWeatherConditionImage(
+                                mWeatherData.conditionCode));
                         setVisibility(View.VISIBLE);
                     }
                 } else {
