@@ -150,6 +150,9 @@
          of them.  This should not normally be modified. -->
     <bool name="config_closeDialogWhenTouchOutside">true</bool>
 
+    <!-- Configuration to support SIM contact batch operation -->
+    <bool name="config_sim_phonebook_batch_operation">false</bool>
+
     <!-- Device configuration indicating whether we should avoid using accelerated graphics
          in certain places to reduce RAM footprint.  This is ignored if ro.config.low_ram
          is true (in that case this is assumed true as well).  It can allow you to tune down
