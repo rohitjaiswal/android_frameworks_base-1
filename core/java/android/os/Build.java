@@ -746,7 +746,7 @@ public class Build {
      * partitions, so we might derive the fingerprint at runtime.
      */
     private static String deriveFingerprint() {
-        String finger = SystemProperties.get("ro.build.fingerprint");
+        String finger = SystemProperties.get("ro.bootimage.build.fingerprint");
         if (TextUtils.isEmpty(finger)) {
             finger = getString("ro.product.brand") + '/' +
                     getString("ro.product.name") + '/' +
@@ -767,7 +767,7 @@ public class Build {
      * of the actual one if possible.
      */
     private static String parseBuildTypeFromFingerprint() {
-        final String fingerprint = SystemProperties.get("ro.build.fingerprint");
+        final String fingerprint = SystemProperties.get("ro.bootimage.build.fingerprint");
         if (TextUtils.isEmpty(fingerprint)) {
             return null;
         }
@@ -806,9 +806,9 @@ public class Build {
      * @hide
      */
     public static void ensureFingerprintProperty() {
-        if (TextUtils.isEmpty(SystemProperties.get("ro.build.fingerprint"))) {
+        if (TextUtils.isEmpty(SystemProperties.get("ro.bootimage.build.fingerprint"))) {
             try {
-                SystemProperties.set("ro.build.fingerprint", FINGERPRINT);
+                SystemProperties.set("ro.bootimage.build.fingerprint", FINGERPRINT);
             } catch (IllegalArgumentException e) {
                 Slog.e(TAG, "Failed to set fingerprint property", e);
             }
@@ -828,7 +828,7 @@ public class Build {
         // Don't care on eng builds.  Incremental build may trigger false negative.
         if ("eng".equals(TYPE)) return true;
 
-        final String system = SystemProperties.get("ro.build.fingerprint");
+        final String system = SystemProperties.get("ro.bootimage.build.fingerprint");
         final String vendor = SystemProperties.get("ro.vendor.build.fingerprint");
         final String bootimage = SystemProperties.get("ro.bootimage.build.fingerprint");
         final String requiredBootloader = SystemProperties.get("ro.build.expect.bootloader");
@@ -837,7 +837,7 @@ public class Build {
         final String currentRadio = SystemProperties.get("gsm.version.baseband");
 
         if (TextUtils.isEmpty(system)) {
-            Slog.e(TAG, "Required ro.build.fingerprint is empty!");
+            Slog.e(TAG, "Required ro.bootimage.build.fingerprint is empty!");
             return false;
         }
 

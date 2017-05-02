@@ -1277,7 +1277,7 @@ static sp<TiffWriter> DngCreator_setup(JNIEnv* env, jobject thiz, uint32_t image
     {
         // software
         char software[PROPERTY_VALUE_MAX];
-        property_get("ro.build.fingerprint", software, "");
+        property_get("ro.bootimage.build.fingerprint", software, "");
         uint32_t count = static_cast<uint32_t>(strlen(software)) + 1;
         BAIL_IF_INVALID_RET_NULL_SP(writer->addEntry(TAG_SOFTWARE, count,
                 reinterpret_cast<uint8_t*>(software), TIFF_IFD_0), env, TAG_SOFTWARE, writer);

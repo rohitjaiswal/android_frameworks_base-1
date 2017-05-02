@@ -1738,7 +1738,7 @@ public final class ActivityManagerService extends ActivityManagerNative
             } break;
             case SHOW_FINGERPRINT_ERROR_UI_MSG: {
                 if (mShowDialogs) {
-                    String buildfingerprint = SystemProperties.get("ro.build.fingerprint");
+                    String buildfingerprint = SystemProperties.get("ro.bootimage.build.fingerprint");
                     String[] splitfingerprint = buildfingerprint.split("/");
                     String vendorid = splitfingerprint[3];
                     AlertDialog d = new BaseErrorDialog(mContext);

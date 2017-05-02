@@ -566,7 +566,7 @@ public class AssetAtlasService extends IAssetAtlas.Stub {
      * @see #checkBuildIdentifier(java.io.BufferedReader, String)
      */
     private String getBuildIdentifier(String versionName) {
-        return SystemProperties.get("ro.build.fingerprint", "") + '/' + versionName + '/' +
+        return SystemProperties.get("ro.bootimage.build.fingerprint", "") + '/' + versionName + '/' +
                 String.valueOf(getFrameworkResourcesFile().length());
     }
 

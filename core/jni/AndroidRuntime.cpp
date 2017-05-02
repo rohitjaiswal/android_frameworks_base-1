@@ -918,7 +918,7 @@ int AndroidRuntime::startVm(JavaVM** pJavaVM, JNIEnv** pEnv, bool zygote)
      * Retrieve the build fingerprint and provide it to the runtime. That way, ANR dumps will
      * contain the fingerprint and can be parsed.
      */
-    parseRuntimeOption("ro.build.fingerprint", fingerprintBuf, "-Xfingerprint:");
+    parseRuntimeOption("ro.bootimage.build.fingerprint", fingerprintBuf, "-Xfingerprint:");
 
     initArgs.version = JNI_VERSION_1_4;
     initArgs.options = mOptions.editArray();
