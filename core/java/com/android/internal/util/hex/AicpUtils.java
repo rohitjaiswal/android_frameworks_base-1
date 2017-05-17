@@ -177,16 +177,6 @@ public class AicpUtils {
     public static Intent INTENT_LAUNCH_APP = new Intent(Intent.ACTION_MAIN)
             .setClassName(APP_PACKAGE_NAME, APP_PACKAGE_NAME + ".SettingsActivity");
 
-    public static boolean isLuckyPatcherInstalled(final Context context) {
-        boolean mluckyPatcherInstalled = false;
-        try {
-            mluckyPatcherInstalled = (context.getPackageManager().getPackageInfo(
-                    "com.android.vending.billing.InAppBillingService.LOCK", 0).versionCode > 0);
-        } catch (PackageManager.NameNotFoundException e) {
-        }
-        return mluckyPatcherInstalled;
-    }
-
     public static void toggleOmniSwitchRecents(Context context, UserHandle user) {
         final Intent showIntent = new Intent(AicpUtils.ACTION_TOGGLE_OVERLAY);
         context.sendBroadcastAsUser(showIntent, user);

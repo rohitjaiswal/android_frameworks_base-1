@@ -134,7 +134,6 @@ import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.internal.statusbar.NotificationVisibility;
 import com.android.internal.statusbar.StatusBarIcon;
-import com.android.internal.util.hex.AicpUtils;
 import com.android.internal.utils.du.ActionHandler;
 import com.android.internal.utils.du.DUPackageMonitor;
 import com.android.internal.utils.du.DUSystemReceiver;
@@ -804,9 +803,6 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
 
             mShowCarrierLabel = Settings.System.getIntForUser(resolver,
                     Settings.System.STATUS_BAR_SHOW_CARRIER, 1, UserHandle.USER_CURRENT);
-            if (AicpUtils.isLuckyPatcherInstalled(mContext)) {
-                mShowCarrierLabel = 3;
-            }
 
             if (mNotificationPanel != null) {
                 mNotificationPanel.updateSettings();
